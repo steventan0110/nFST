@@ -7,15 +7,8 @@ train sequence models. Using FST to represent latent structure is a generic appr
 can be applied to various tasks including transliteration, slot filtering (tagging), cipher decoding, etc.
 In this documentation, we provide tutorials as well as configuration for sequence modeling using FST.
 
-.. note::
-
-   This project is under active development.
-
-
-
 Installation & Setup
 --------------------
-
 .. _packages:
 
 Packages
@@ -30,6 +23,10 @@ and perform reranking to compare the performance. This means third-party generat
 hypothesis is required. In our research, we used LSTM models trained with Fairseq
 toolkit as the hypothesis-provider. To learn more about Fairseq, please refer to
 its `tutorials <https://fairseq.readthedocs.io/en/latest/>`_
+
+.. note::
+
+   This project is under active development.
 
 Contents
 --------
