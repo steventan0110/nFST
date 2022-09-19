@@ -9,6 +9,12 @@ In this documentation, we provide tutorials as well as configuration for sequenc
 
 Installation & Setup
 --------------------
+After cloning the repository, install packages by
+
+.. code-block: console
+   
+   (.venv) $ pip install -r /path/to/nFST/requirements.txt
+
 .. _packages:
 
 Packages
