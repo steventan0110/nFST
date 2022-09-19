@@ -1,10 +1,5 @@
-Preprocessing
-=====
-
-.. _fst:
-
 Define Your FST
-------------
+================
 
 To use Lumache, first install it using pip:
 
@@ -13,7 +8,7 @@ To use Lumache, first install it using pip:
    (.venv) $ pip install lumache
 
 Serialize FST
-----------------
+==============
 
 To retrieve a list of random ingredients,
 you can use the ``lumache.get_random_ingredients()`` function:
