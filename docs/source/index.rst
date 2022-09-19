@@ -12,12 +12,12 @@ In this documentation, we provide tutorials as well as configuration for sequenc
    This project is under active development.
 
 Installation & Setup
-====================
+--------------------
 
 .. _packages:
 
 Packages
-------------
+~~~~~~~~~
 After cloning the repository from GitHub, install the required
 environment files using requirement
 
