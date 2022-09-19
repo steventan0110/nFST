@@ -34,25 +34,25 @@ its `tutorials <https://fairseq.readthedocs.io/en/latest/>`_
 Contents
 --------
 .. toctree::
-    :maxdepth: 1
+    :maxdepth: 5
     :caption: Preprocessing
     
     preprocess
 
 .. toctree::
-    :maxdepth: 1
+    :maxdepth: 5
     :caption: Training
     
     train
 
 .. toctree::
-    :maxdepth: 1
+    :maxdepth: 5
     :caption: Decoding
     
     decode
 
 .. toctree::
-    :maxdepth: 1
+    :maxdepth: 5
     :caption: Evaluation
     
     eval
