@@ -1,9 +1,9 @@
 Preprocessing
 =====
 
-.. _installation:
+.. _fst:
 
-Installation
+Define Your FST
 ------------
 
 To use Lumache, first install it using pip:
@@ -12,7 +12,7 @@ To use Lumache, first install it using pip:
 
    (.venv) $ pip install lumache
 
-Creating recipes
+Serialize FST
 ----------------
 
 To retrieve a list of random ingredients,

@@ -1,9 +1,9 @@
 Preprocessing
 =====
 
-.. _installation:
+.. _train:
 
-Installation
+Data Loader
 ------------
 
 To use Lumache, first install it using pip:
@@ -12,7 +12,7 @@ To use Lumache, first install it using pip:
 
    (.venv) $ pip install lumache
 
-Creating recipes
+Model Architecture
 ----------------
 
 To retrieve a list of random ingredients,
