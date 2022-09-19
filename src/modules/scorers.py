@@ -5,10 +5,10 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import Embedding, GRUCell, Linear, Dropout, GRU, LSTM, RNNBase
-from easy_latent_seq.util.preprocess_util import Vocab
-import easy_latent_seq.modules.model as model
-from easy_latent_seq.modules.queries import EncodedQuery, QueryBase
-from easy_latent_seq.modules.nros import NRO
+from src.util.preprocess_util import Vocab
+import src.modules.model as model
+from src.modules.queries import EncodedQuery, QueryBase
+from src.modules.nros import NRO
 
 
 # TODO: refactor this file

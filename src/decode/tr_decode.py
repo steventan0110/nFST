@@ -1,8 +1,8 @@
 import sys
 import os
-from easy_latent_seq.modules.lightning import JointProb
-from easy_latent_seq.preprocess.preprocess import Preprocess
-from easy_latent_seq.util.preprocess_util import Utils, Vocab
+from src.modules.lightning import JointProb
+from src.preprocess.preprocess import Preprocess
+from src.util.preprocess_util import Utils, Vocab
 
 
 def main():

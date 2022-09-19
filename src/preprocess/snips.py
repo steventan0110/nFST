@@ -5,9 +5,9 @@ import logging
 import re
 from omegaconf import DictConfig
 import multiprocessing as mp
-from easy_latent_seq.util.preprocess_util import Vocab, Utils
-from easy_latent_seq.preprocess.preprocess import Preprocess
-from easy_latent_seq.fsm.snips import Snips
+from src.util.preprocess_util import Vocab, Utils
+from src.preprocess.preprocess import Preprocess
+from src.fsm.snips import Snips
 from tqdm import tqdm
 from numpy import savez_compressed
 from itertools import islice

@@ -5,19 +5,19 @@ import pytorch_lightning as pl
 import torch
 import pickle
 from torch.nn.modules import Embedding
-from easy_latent_seq.util.preprocess_util import Vocab, Utils
+from src.util.preprocess_util import Vocab, Utils
 
-# from easy_latent_seq.modules import scorers, sampler, nre_scorers, transducers, queries
-from easy_latent_seq.modules.scorers import (
+# from src.modules import scorers, sampler, nre_scorers, transducers, queries
+from src.modules.scorers import (
     GlobalCompositionNROScorer,
     WFSTScorer,
     StaticRNNScorer,
 )
-from easy_latent_seq.modules.estimatros import Estimators
-from easy_latent_seq.modules.samplers import Sampler
-from easy_latent_seq.modules.nros import NRO
-from easy_latent_seq.modules.scorers import FSAGRUScorer, FSAMaskScorer
-from easy_latent_seq.modules.queries import QueryPiGivenX, QueryPiGivenXAndY
+from src.modules.estimatros import Estimators
+from src.modules.samplers import Sampler
+from src.modules.nros import NRO
+from src.modules.scorers import FSAGRUScorer, FSAMaskScorer
+from src.modules.queries import QueryPiGivenX, QueryPiGivenXAndY
 
 import logging
 

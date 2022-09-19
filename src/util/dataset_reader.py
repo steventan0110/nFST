@@ -7,7 +7,7 @@ from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 from torch import from_numpy
 
-from easy_latent_seq.util.preprocess_util import Utils
+from src.util.preprocess_util import Utils
 import tqdm
 from itertools import islice
 

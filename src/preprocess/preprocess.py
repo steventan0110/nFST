@@ -1,7 +1,7 @@
 from typing import Optional
 import os
 import pickle
-from easy_latent_seq.util.preprocess_util import Vocab, dotdict, Utils
+from src.util.preprocess_util import Vocab, dotdict, Utils
 from modules.path_semiring import OwnAST
 from modules.scorers import FSAGRUScorer
 import pynini

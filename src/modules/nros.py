@@ -1,7 +1,7 @@
 import torch
 from typing import Tuple, Container, List
-from easy_latent_seq.util.preprocess_util import Utils, Vocab
-from easy_latent_seq.modules.path_semiring import RefWeight, OwnAST
+from src.util.preprocess_util import Utils, Vocab
+from src.modules.path_semiring import RefWeight, OwnAST
 
 
 class ZTable:

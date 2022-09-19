@@ -2,11 +2,11 @@ import hydra
 from typing import Dict
 import logging
 from omegaconf import DictConfig, OmegaConf
-from easy_latent_seq.preprocess.snips import PreprocessSnips
-from easy_latent_seq.preprocess.tr import PreprocessTR
-from easy_latent_seq.util.preprocess_util import dotdict
-from easy_latent_seq.trainer.tr_trainer import Trainer
-from easy_latent_seq.decode.tr_serialize import SerializeTR
+from src.preprocess.snips import PreprocessSnips
+from src.preprocess.tr import PreprocessTR
+from src.util.preprocess_util import dotdict
+from src.trainer.tr_trainer import Trainer
+from src.decode.tr_serialize import SerializeTR
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ def add_dot_operation(dict_cfg):
     return dotdict(dict_cfg)
 
 
-@hydra.main(config_path="./conf", config_name="tr.yaml")
+@hydra.main(config_path="./conf", config_name="debug.yaml")
 def main(config: DictConfig):
     cfg = OmegaConf.to_yaml(config, resolve=True)
     logger.info(cfg)
@@ -26,7 +26,7 @@ def main(config: DictConfig):
     args = add_dot_operation(dict_cfg)
     PreprocessTR(args)
     # Trainer(args)
-    SerializeTR(args)
+    # SerializeTR(args)
 
 
 if __name__ == "__main__":

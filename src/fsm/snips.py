@@ -1,8 +1,8 @@
 import pickle
 
 from mfst import FST
-from easy_latent_seq.modules.path_semiring import RefWeight, OwnAST
-from easy_latent_seq.util.preprocess_util import Vocab, Utils
+from src.modules.path_semiring import RefWeight, OwnAST
+from src.util.preprocess_util import Vocab, Utils
 from os.path import exists
 from collections import defaultdict
 

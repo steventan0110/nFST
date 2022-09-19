@@ -3,9 +3,9 @@ from typing import Optional, Tuple, Dict
 import numpy as np
 import torch
 from torch.distributions import Categorical
-from easy_latent_seq.modules.scorers import LeftToRightScorer
-from easy_latent_seq.util.preprocess_util import Utils
-from easy_latent_seq.modules.scorers import FSAGRUScorer
+from src.modules.scorers import LeftToRightScorer
+from src.util.preprocess_util import Utils
+from src.modules.scorers import FSAGRUScorer
 
 
 def get_model(model) -> LeftToRightScorer:

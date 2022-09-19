@@ -3,9 +3,9 @@ from pathlib import Path
 import logging
 import re
 import multiprocessing as mp
-from easy_latent_seq.util.preprocess_util import Vocab, Utils
-from easy_latent_seq.preprocess.preprocess import Preprocess
-from easy_latent_seq.fsm.tr import TR
+from src.util.preprocess_util import Vocab, Utils
+from src.preprocess.preprocess import Preprocess
+from src.fsm.tr import TR
 from tqdm import tqdm
 import numpy as np
 from numpy import load, savez_compressed

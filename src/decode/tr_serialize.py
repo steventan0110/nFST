@@ -5,10 +5,10 @@ from pathlib import Path
 import os
 import re
 import multiprocessing as mp
-from easy_latent_seq.util.preprocess_util import Vocab, Utils
-from easy_latent_seq.preprocess.preprocess import Preprocess
-from easy_latent_seq.preprocess.tr import PreprocessTR
-from easy_latent_seq.fsm.tr import TR
+from src.util.preprocess_util import Vocab, Utils
+from src.preprocess.preprocess import Preprocess
+from src.preprocess.tr import PreprocessTR
+from src.fsm.tr import TR
 from tqdm import tqdm
 from os.path import exists
 import re

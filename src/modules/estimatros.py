@@ -2,8 +2,8 @@ from allennlp.data.vocabulary import Vocabulary
 from typing import Optional, Dict
 import torch
 import numpy as np
-from easy_latent_seq.modules.scorers import PaddedScorer, ScorerBase
-from easy_latent_seq.modules.samplers import Sampler
+from src.modules.scorers import PaddedScorer, ScorerBase
+from src.modules.samplers import Sampler
 
 
 class Estimators:

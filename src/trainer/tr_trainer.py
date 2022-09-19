@@ -2,9 +2,9 @@ import sys
 import os
 from typing import Dict
 import torch
-from easy_latent_seq.util.dataset_reader import T9FSADataModule
-from easy_latent_seq.util.preprocess_util import Utils, Vocab, dotdict
-from easy_latent_seq.modules.lightning import JointProb
+from src.util.dataset_reader import T9FSADataModule
+from src.util.preprocess_util import Utils, Vocab, dotdict
+from src.modules.lightning import JointProb
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping

@@ -2,9 +2,9 @@ from functools import lru_cache
 from mfst import FST
 from typing import List
 import pynini
-from easy_latent_seq.modules.path_semiring import RefWeight, OwnAST
-from easy_latent_seq.modules.nros import NRO
-from easy_latent_seq.util.preprocess_util import Vocab, Utils
+from src.modules.path_semiring import RefWeight, OwnAST
+from src.modules.nros import NRO
+from src.util.preprocess_util import Vocab, Utils
 from os.path import exists
 import logging
 

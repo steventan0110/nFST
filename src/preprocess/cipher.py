@@ -2,8 +2,8 @@ import os
 import hydra
 import logging
 from omegaconf import DictConfig
-from easy_latent_seq.util.preprocess_util import Vocab
-from easy_latent_seq.preprocess.preprocess import Preprocess
+from src.util.preprocess_util import Vocab
+from src.preprocess.preprocess import Preprocess
 from tqdm import tqdm
 from itertools import islice
 

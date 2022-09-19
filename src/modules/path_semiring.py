@@ -2,7 +2,7 @@ from typing import Tuple, FrozenSet, Container, Set, Dict
 
 import mfst
 from bidict import bidict
-from easy_latent_seq.util.preprocess_util import Utils
+from src.util.preprocess_util import Utils
 
 
 class OwnAST:
