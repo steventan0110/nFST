@@ -13,23 +13,22 @@ from tqdm import tqdm
 from os.path import exists
 import re
 
-logger = logging.getLogger("SerializeTR")
-
-
-def find_loss(path):
-    best_loss = float("inf")
-    for _, _, files in os.walk(path):
-        for file in files:
-            if "best_loss" in file:
-                loss = file.split("best_loss_")[1]
-                loss = float(loss[:-3])
-                if loss < best_loss:
-                    best_loss = loss
-        break
-    return best_loss
+logger = logging.getLogger(__name__)
 
 
 def find_best_ckpt(path, split):
+    def find_loss(target_folder):
+        best_loss = float("inf")
+        for _, _, files in os.walk(target_folder):
+            for file in files:
+                if "best_loss" in file:
+                    loss = file.split("best_loss_")[1]
+                    loss = float(loss[:-3])
+                    if loss < best_loss:
+                        best_loss = loss
+            break
+        return best_loss
+
     for _, ckpt_dirs, _ in os.walk(path):
         best_loss = float("inf")
         for ckpt in ckpt_dirs:

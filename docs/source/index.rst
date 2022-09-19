@@ -1,13 +1,11 @@
-Welcome to Lumache's documentation!
+Welcome to nFST documentation!
 ===================================
 
-**Lumache** (/lu'make/) is a Python library for cooks and food lovers
-that creates recipes mixing random ingredients.
-It pulls data from the `Open Food Facts database <https://world.openfoodfacts.org/>`_
-and offers a *simple* and *intuitive* API.
-
-Check out the :doc:`usage` section for further information, including
-how to :ref:`installation` the project.
+nFST (neuralized finite state transducer) is a sequence modeling toolkit
+that allows users to define their own latent variable models (with help of finite state machines) to
+train sequence models. Using FST to represent latent structure is a generic approach that
+can be applied to various tasks including transliteration, slot filtering (tagging), cipher decoding, etc.
+In this documentation, we provide tutorials as well as configuration for sequence modeling using FST.
 
 .. note::
 
@@ -15,8 +13,32 @@ how to :ref:`installation` the project.
 
 Contents
 --------
+.. toctree::
+    :maxdepth: 1
+    :caption: Installation
+    
+    install
+    
+.. toctree::
+    :maxdepth: 1
+    :caption: Preprocessing
+    
+    preprocess
 
 .. toctree::
+    :maxdepth: 1
+    :caption: Training
+    
+    train
 
-   usage
-   api
+.. toctree::
+    :maxdepth: 1
+    :caption: Decoding
+    
+    decode
+
+.. toctree::
+    :maxdepth: 1
+    :caption: Evaluation
+    
+    eval

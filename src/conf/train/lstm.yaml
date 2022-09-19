@@ -41,6 +41,6 @@ exp_window_coefficient: 0.01
 mask: False
 nro: False
 
-train_config: hid-${.hid_dim}/layers-${.num_layers}/tilde-p-hid-${.tilde_p_hid_dim}/tilde-p-layers-${.tilde_p_num_layers}/drop-${.dropout}/clip-${.grad_clip}/bsz-${.batch_size}/max-seq-len-${.max_length}/length-threshold-${.length_threshold}/estimator-${.estimator}/proposal-${.proposal_dist}/tilde-p-type-${.tilde_p_type}/k-${.k}/tune-q-${.tune_q}/learning-rate-${.learning_rate}/tied-mark-embeddings-${.tied_mark_embeddings}/label-smoothing-${.label_smoothing}/two-level-marks-${.two_level_marks}/tilde-p-choice-${.tilde_p_choice}/SER_WEIGHT-${.ser_weight}"
+train_config: hid-${.hid_dim}/layers-${.num_layers}/tilde-p-hid-${.tilde_p_hid_dim}/tilde-p-layers-${.tilde_p_num_layers}/drop-${.dropout}/clip-${.grad_clip}/bsz-${.batch_size}/max-seq-len-${.max_length}/length-threshold-${.length_threshold}/estimator-${.estimator}/proposal-${.proposal_dist}/tilde-p-type-${.tilde_p_type}/k-${.k}/tune-q-${.tune_q}/learning-rate-${.learning_rate}/tied-mark-embeddings-${.tied_mark_embeddings}/label-smoothing-${.label_smoothing}/two-level-marks-${.two_level_marks}/tilde-p-choice-${.tilde_p_choice}/SER_WEIGHT-${.ser_weight}
 
 

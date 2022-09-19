@@ -7,6 +7,8 @@ from src.preprocess.tr import PreprocessTR
 from src.util.preprocess_util import dotdict
 from src.trainer.tr_trainer import Trainer
 from src.decode.tr_serialize import SerializeTR
+from src.decode.decoder import Decoder
+from src.evaluate.rerank import Rerank
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +22,14 @@ def add_dot_operation(dict_cfg):
 
 @hydra.main(config_path="./conf", config_name="debug.yaml")
 def main(config: DictConfig):
-    cfg = OmegaConf.to_yaml(config, resolve=True)
-    logger.info(cfg)
+    logger.info(OmegaConf.to_yaml(config, resolve=True))
     dict_cfg = OmegaConf.to_container(config, resolve=True)
     args = add_dot_operation(dict_cfg)
-    PreprocessTR(args)
+    # PreprocessTR(args)
     # Trainer(args)
     # SerializeTR(args)
+    Decoder(args)
+    Rerank(args)
 
 
 if __name__ == "__main__":
