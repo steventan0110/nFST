@@ -1,0 +1,8 @@
+defaults:
+  - preprocess: standard
+  - train_config: lstm
+
+
+limit: 100000
+language: ???
+cpu_count: 8

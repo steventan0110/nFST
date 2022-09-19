@@ -1,0 +1,25 @@
+# TODO: clean up thoses confusing setup
+bos: 19997
+eos: 19998
+pad: 19999
+cpu_count: 10
+reserved_vocab_size: 150
+wfsa_length_prior: 0.7
+control_symbols: cstart,cend,input-mark,output-mark,insertion-mark,closure,wfst-start,wfst-end,cp1,cp2,cpstart,cpend
+preprocess_config: reserved-vocab-size-${.reserved_vocab_size}/wfsa-length-prior-${.wfsa_length_prior}/
+
+############# Unused Parameters from legacy code  #################
+# panphon: False
+# syllabic: False
+# unicode: False
+# o_i_weights: False
+# no_subtitution: True
+# reserved_syllabic: False
+# use_t9: True
+# wfst: False
+# covering: True
+# hard: False
+# fat_finger: False
+# decoupled_wfst: False
+
+#preprocess_config: covering-${.covering}/panphon-${.panphon}/syllabic-${.syllabic}/unicode-${.unicode}/wfst-${.wfst}/o-i-weights-${.o_i_weights}/no-substitution-${.no_subtitution}/reserved-syllabic-${.reserved_syllabic}/reserved-vocab-size-${.reserved_vocab_size}/decoupled-wfst-${.decoupled_wfst}/wfsa-length-prior-${.wfsa_length_prior}/"

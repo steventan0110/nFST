@@ -1,0 +1,9 @@
+defaults:
+  - preprocess: standard
+  - train_config: lstm
+
+
+limit: 100000
+task: ???
+output_dir: ???
+
