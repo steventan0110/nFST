@@ -1,6 +1,7 @@
 Define Your FST
 ===============
 
+
 Our toolkit already provides serialization, training, decoding, and evaluation code. With that being said, the most work that you need to do is preparing dataset as well writing a python script to define your finite state machines under the folder ``nFST/fsm``, where you can also check our already-defined machines for transliteration and slot-filling tasks. In your customized machine, you need to implement several functionalities including.
  * Define input/output symbols (and any optional control symbols) and build a vocab/dictionary on it.
  * Define the strcuture of your machine
@@ -19,6 +20,7 @@ In our case, we use a self-defined semiring called ``RefWeight`` which allows fo
 
 Serialize FST
 =============
+
 
 To serialize your customized FST with input data, you need to add a file under ``nFST/preprocess`` that extends our implementation ``preprocess.py``. A helpful example to look at is our ``tr.py`` file. The major functionality of ``preprocess.py`` is to:
   * serialize the fst machine itself
