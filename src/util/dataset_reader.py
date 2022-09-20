@@ -47,6 +47,7 @@ class T9FSADataModule(LightningDataModule):
         self,
         prefix,
         lang,
+        sub_size,
         limit: Optional[int] = None,
         serialize_prefix: str = None,
         batch_size: int = 1,
@@ -65,6 +66,7 @@ class T9FSADataModule(LightningDataModule):
         self.pad = pad
         self.num_workers = num_workers
         self.language = language
+        self.sub_size = sub_size
         # called only on 1 GPU
         loaded = self.load_from_splits(limit, pad, proposal_distribution, vocab_size)
         self.splits = loaded
@@ -74,9 +76,7 @@ class T9FSADataModule(LightningDataModule):
         if self.language is not None:
             # TODO: use duplicate codes for now for transliteration dataset
             for dataset_split in ("train", "dev", "test"):
-                file_path = (
-                    f"{self.prefix}/{dataset_split}/{self.language}_{dataset_split}.tsv"
-                )
+                file_path = f"{self.prefix}/{dataset_split}/{self.language}_{dataset_split}_filter_10_{self.sub_size}.tsv"
                 current_split = []
                 current_fst_split = []
 

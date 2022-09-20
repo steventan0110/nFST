@@ -643,8 +643,6 @@ class JointProb(pl.LightningModule):
                 if q_loss_dict[f"{k}_rf"] is not None:
                     self.log(f"val_q_{k}_rf", q_loss_dict[f"{k}_rf"])
 
-        self.log("val_loss", 0.5)  # FIXME
-
     def configure_optimizers(self):
         from torch.optim import Adam
         from torch.optim.lr_scheduler import ReduceLROnPlateau

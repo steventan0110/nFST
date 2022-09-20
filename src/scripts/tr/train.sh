@@ -8,9 +8,9 @@ python $ROOT/main.py \
     language=$lang \
     fairseq_ckpt="/export/c01/kitsing/dakshina-small-fairseq/checkpoints/${lang}" \
     sub_size=500 \
-    gpu=0 \
-    do_preprocess=True \
-    do_train=False \
+    gpu=1 \
+    do_preprocess=False \
+    do_train=True \
     do_fairseq=False \
     do_decode=False \
     do_eval=False

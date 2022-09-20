@@ -20,16 +20,22 @@ def add_dot_operation(dict_cfg):
     return dotdict(dict_cfg)
 
 
-@hydra.main(config_path="./conf", config_name="debug.yaml")
+@hydra.main(config_path="./conf", config_name="tr.yaml")
 def main(config: DictConfig):
     logger.info(OmegaConf.to_yaml(config, resolve=True))
     dict_cfg = OmegaConf.to_container(config, resolve=True)
     args = add_dot_operation(dict_cfg)
-    # PreprocessTR(args)
-    # Trainer(args)
-    # SerializeTR(args)
-    Decoder(args)
-    Rerank(args)
+
+    if args.do_preprocess:
+        PreprocessTR(args)
+    if args.do_train:
+        Trainer(args)
+    if args.do_fairseq:
+        SerializeTR(args)
+    if args.do_decode:
+        Decoder(args)
+    # if args.do_eval:
+    #     Rerank(args)
 
 
 if __name__ == "__main__":

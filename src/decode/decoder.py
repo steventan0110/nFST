@@ -1,8 +1,7 @@
-import sys
 import os
 import logging
+from pathlib import Path
 from src.modules.lightning import JointProb
-from src.preprocess.preprocess import Preprocess
 from src.util.preprocess_util import Utils, Vocab
 from src.trainer.tr_trainer import flatten_args
 from glob import glob
@@ -34,7 +33,6 @@ def find_best_ckpt(path):
         best_loss = float("inf")
         for ckpt in ckpt_dirs:  # different version
             (loss, best_file) = find_loss(f"{path}/{ckpt}/checkpoints")
-            print(loss, ckpt)
             if loss is None:
                 # sometimes a folder is empty due to bad training
                 continue
@@ -47,42 +45,43 @@ def find_best_ckpt(path):
 
 class Decoder:
     def __init__(self, args) -> None:
-        self.args = flatten_args(args)
         Vocab.load(args.vocab)
-        self.vocab_size = Vocab.size()
+        args.vocab_size = Vocab.size()
+        self.args = flatten_args(args)
         self.args.bos, self.args.eos, self.args.pad = Utils.lookup_control(
             args.preprocess.bos, args.preprocess.eos, args.preprocess.pad
         )
-        self.model_root = f"{args.training_outputs}/default"
+        self.model_root = f"{args.training_outputs}/lightning_logs"
         self.best_ckpt = find_best_ckpt(self.model_root)
         self.decode_prefix = args.decode_prefix
 
         logger.info(f"Decoding fst with model ckpt {self.best_ckpt}")
+        self.model = JointProb.load_from_checkpoint(
+            self.best_ckpt, "cpu", args=self.args
+        )
+        self.model.eval()
         for split in ["valid", "test"]:
             npz_path = f"{args.serialize_fst_path}/{split}"
             self.decode(npz_path, split)
 
     def decode(self, path, split):
-        model = JointProb.load_from_checkpoint(
-            self.best_ckpt, args=self.args, strict=True
-        ).to("cpu")
-        model.eval()
-
+        Path(f"{self.decode_prefix}/{split}").mkdir(parents=True, exist_ok=True)
         filenames = glob(f"{path}/*.npz")
-        for fname in tqdm(filenames, disable=None):
+        for fname in tqdm(filenames, disable=True):
             bfname = basename(fname)
-            decoded_fname = f"{self.decoded_prefix}/{split}/{bfname}.decoded"
+            decoded_fname = f"{self.decode_prefix}/{split}/{bfname}.decoded"
+
             if not exists(decoded_fname):
+                print(decoded_fname)
                 try:
-                    prob, mark = model.decode_from_npz(
-                        fname, vocab_size=self.vocab_size, pad=self.args.pad
+                    prob, mark = self.model.decode_from_npz(
+                        fname, vocab_size=self.args.vocab_size, pad=self.args.pad
                     )
                     with open(decoded_fname, mode="w") as fh:
                         fh.write(f"{prob}\n")
                     # tokens = [Vocab.r_lookup(_) for _ in mark.tolist()]
                     # logger.info(tokens)
                 except Exception as e:
-                    print(f"cannot decode {fname}: {e}")
+                    logger.error(f"cannot decode {fname}: {e}")
             else:
                 logger.info("sequence already decoded")
-            break

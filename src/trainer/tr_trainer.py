@@ -1,14 +1,10 @@
-import sys
-import os
 from typing import Dict
-import torch
 from src.util.dataset_reader import T9FSADataModule
 from src.util.preprocess_util import Utils, Vocab, dotdict
 from src.modules.lightning import JointProb
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning import loggers as pl_loggers
 import logging
 
@@ -46,6 +42,7 @@ class Trainer:
             prefix=cfg.prefix,
             lang=cfg.task,
             limit=cfg.limit,
+            sub_size=args.sub_size,
             serialize_prefix=cfg.serialize_prefix,
             batch_size=cfg.batch_size,
             pad=cfg.pad,
@@ -54,7 +51,6 @@ class Trainer:
             proposal_distribution=cfg.proposal_dist,
             language=cfg.language,
         )
-
         model_checkpoint = ModelCheckpoint(
             monitor="val_loss",
             filename=f"{cfg.tilde_p_choice}-{cfg.estimator}"
@@ -75,6 +71,7 @@ class Trainer:
             logger=tb_logger,
             callbacks=[model_checkpoint, early_stop],
             accelerator=accelerator,
+            devices=int(cfg.gpu),
         )
 
         trainer.fit(model, data)

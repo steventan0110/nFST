@@ -23,3 +23,11 @@ prefix: /export/b02/wtan/dataset/tr
 training_outputs: ${output_dir}/${task}/outputs/model/${language}/${train.train_config}
 serialize_fst_path: ${output_dir}/${task}/outputs/fairseq/${language}
 decode_prefix: ${output_dir}/${task}/outputs/decode/${language}
+
+# action toggle
+do_preprocess: ???
+do_train: ???
+do_fairseq: ???
+do_decode: ???
+do_eval: ???
+

@@ -11,7 +11,6 @@ hid_dim: 256
 k: 16
 dropout: 0.3
 grad_clip: 5.
-tune_q: True
 learning_rate: 1e-3
 label_smoothing: 0.1
 
@@ -29,7 +28,8 @@ ser_weight: 1e-2
 proposal_tuning_k: 32
 tune_global: False
 tune_denom: False
-tune_p: False
+tune_p: True
+tune_q: True
 
 structured_entropy_regularization: 0.1
 force_type: None

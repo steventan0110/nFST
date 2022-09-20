@@ -6,10 +6,6 @@ import numpy as np
 import logging
 import re
 from collections import defaultdict
-from mlxtend.evaluate import permutation_test
-from seqeval.metrics import classification_report
-from seqeval.metrics import f1_score
-import matplotlib.pyplot as plt
 
 logger = logging.getLogger("Rerank[Eval]")
 
@@ -349,51 +345,6 @@ class Rerank:
         logger.info(f"MRR reranked: {mean_reciprocal_rank(reranked_outcome)}")
         logger.info(f"TOP-1 baseline: {top1_rank(baseline_outcome)}")
         logger.info(f"TOP-1 reranked: {top1_rank(reranked_outcome)}")
-
-
-def mc_paired_perm_test(xs, ys, samples=10000, statistic=np.mean):
-    def effect(xs, ys):
-        return np.abs(statistic(xs) - statistic(ys))
-
-    n, k = len(xs), 0
-    diff = effect(xs, ys)  # observed difference
-    for j in range(samples):  # for each random sample
-        swaps = np.random.randint(0, 2, n).astype(bool)  # flip n coins
-        k += diff <= effect(
-            np.select([swaps, ~swaps], [xs, ys]),  # swap elements accordingly
-            np.select([~swaps, swaps], [xs, ys]),
-        )
-    return k / float(
-        samples
-    )  # fraction of random samples that achieved at least the observed difference
-
-
-def pair_test_mrr(fairseq_ranks, fst_ranks):
-    fairseq_ranks_rs = (np.asarray(r).nonzero()[0] for r in fairseq_ranks)
-    fst_ranks_rs = (np.asarray(r).nonzero()[0] for r in fst_ranks)
-    x = [1.0 / (r[0] + 1) if r.size else 0.0 for r in fairseq_ranks_rs]
-    y = [1.0 / (r[0] + 1) if r.size else 0.0 for r in fst_ranks_rs]
-
-    p_value = mc_paired_perm_test(x, y, samples=10000, statistic=np.mean)
-    p_value_mlxtend = permutation_test(
-        x,
-        y,
-        method="approximate",
-        func=lambda x, y: np.abs(np.mean(x) - np.mean(y)),
-        paired=True,
-        seed=0,
-    )
-
-    logger.info(f"P value of MRR Permutation Test: {p_value}")
-    logger.info(f"P value of MRR Permutation Test mlxtend: {p_value_mlxtend}")
-
-
-def plot_prob(fairseq_prob, fst_prob, fairseq_prob_gold, fst_prob_gold):
-    plt.scatter(fairseq_prob, fst_prob, color="blue", s=1)
-    plt.scatter(fairseq_prob_gold, fst_prob_gold, color="red", s=1)
-    plt.plot([0, 1], [0, 1], color="black")
-    plt.savefig("fairseq-fst.png")
-    return
 
 
 def mean_reciprocal_rank(rs):
