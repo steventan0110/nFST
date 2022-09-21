@@ -34,8 +34,8 @@ def main(config: DictConfig):
         SerializeTR(args)
     if args.do_decode:
         Decoder(args)
-    # if args.do_eval:
-    #     Rerank(args)
+    if args.do_eval:
+        Rerank(args)
 
 
 if __name__ == "__main__":

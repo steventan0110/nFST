@@ -90,7 +90,7 @@ def get_baseline(m, n):
                     lang_id_mistake += 1
                 break
         out.append(order)
-    logger.info("Number of lang id mistake from fairseq: ", lang_id_mistake)
+    logger.info(f"Number of lang id mistake from fairseq: {lang_id_mistake}")
     return out
 
 
@@ -176,6 +176,7 @@ def get_prob_for_all_sentences(ref, out):
     with open(ref, "r") as ref_h:
         data = ref_h.read()
         src, tgt, hypo = None, None, None
+
     for (idx, sent) in enumerate(data.split("\n")):
         if sent.startswith("S"):
             src = convert_string_vocab(sent.split("\t")[1])
@@ -198,9 +199,7 @@ def get_prob_for_all_sentences(ref, out):
             score = sent.split("\t")[1]
             hyp = convert_tag_vocab(sent.split("\t")[2])
             if src not in m:
-                logger.info(
-                    "Preprocess err, {} not in gold standard translation".format(tgt)
-                )
+                logger.info(f"Preprocess err, {tgt} not in gold standard translation")
                 continue
             if hyp == tgt:
                 logger.info("hypothesis matches gold tgt, skip")
@@ -285,21 +284,20 @@ def get_rerank(m, prefix, output_mapping, forward, filter=True):
                     lang_id_mistake += 1
             if v[pos][2] == 1:
                 order[idx] = 1
-                if idx != 0:
-                    logger.info(
-                        "src: {}\n predicted tag: {}\n best tag: {}\n".format(
-                            k, best_tgt, oracle_tgt
-                        )
-                    )
+                # TODO: debug/interpretation purpose
+                # if idx != 0:
+                #     logger.info(
+                #         "src: {}\n predicted tag: {}\n best tag: {}\n".format(
+                #             k, best_tgt, oracle_tgt
+                #         )
+                #     )
                 break
         out.append(order)
     logger.info(
-        "Gold sentence log prob sum: {0}, logprob avg: {1}".format(
-            oracle_log_prob, oracle_log_prob / num_oracle_sent
-        )
+        f"Gold sentence log prob sum: {oracle_log_prob}, logprob avg: {oracle_log_prob / num_oracle_sent}"
     )
-    logger.info("Number of files that are found: ", num_exist_file)
-    logger.info("Number of lang id mistake by nfst: ", lang_id_mistake)
+    logger.info(f"{num_exist_file} files that are found")
+    logger.info(f"{lang_id_mistake} lang id mistake by nfst")
     return out
 
 
@@ -307,13 +305,13 @@ class Rerank:
     def __init__(self, args) -> None:
         self.cfg = args.preprocess
         self.limit = int(args.limit)
-        self.sub_size = str(args.sub_size)
+        self.sub_size = args.sub_size
         self.task = args.task
         self.language = args.language
         self.control_symbols = list(self.cfg.control_symbols.split(","))
         self.output_mapping = Utils.load_mapping(args.output_mapping)
         self.input_mapping = args.input_mapping
-        Vocab.load(args.preprocess.vocab)
+        Vocab.load(args.vocab)
         # important paths used
         self.serialize_prefix = args.serialize_prefix
         self.prefix = args.prefix
@@ -326,9 +324,9 @@ class Rerank:
 
         for split in ["valid"]:
             (fairseq_ref, fairseq_hyp) = find_best_ckpt(args.fairseq_ckpt, split)
-
-        fairseq_result_map = get_prob_for_all_sentences(fairseq_ref, fairseq_hyp)
-        self.compute_and_print_results(fairseq_result_map, split)
+            logger.info(f"Using fairseq file: {fairseq_ref}")
+            fairseq_result_map = get_prob_for_all_sentences(fairseq_ref, fairseq_hyp)
+            self.compute_and_print_results(fairseq_result_map, split)
 
     def compute_and_print_results(self, result_map, split):
         baseline_outcome = get_baseline(result_map, self.k)
@@ -371,7 +369,5 @@ def mean_reciprocal_rank(rs):
 
 
 def top1_rank(rs):
-    import numpy as np
-
     rs = (np.asarray(r).nonzero()[0] for r in rs)
     return np.mean([1.0 if r.size and r[0] == 0 else 0.0 for r in rs])
