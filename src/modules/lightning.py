@@ -5,20 +5,19 @@ import pytorch_lightning as pl
 import torch
 import pickle
 from torch.nn.modules import Embedding
+from src.modules.transformer import Transformer
 from src.util.preprocess_util import Vocab, Utils
 
 # from src.modules import scorers, sampler, nre_scorers, transducers, queries
 from src.modules.scorers import (
     GlobalCompositionNROScorer,
-    WFSTScorer,
     StaticRNNScorer,
 )
 from src.modules.estimatros import Estimators
 from src.modules.samplers import Sampler
-from src.modules.nros import NRO
 from src.modules.scorers import FSAGRUScorer, FSAMaskScorer
 from src.modules.queries import QueryPiGivenX, QueryPiGivenXAndY
-
+from src.modules.proposal import Proposal
 import logging
 
 logger = logging.getLogger("LightningTrain")
@@ -49,9 +48,6 @@ class JointProb(pl.LightningModule):
         self.tilde_p_type = args.tilde_p_type
         self.learning_rate = args.learning_rate
 
-        self.structured_entropy_regularization = float(
-            args.structured_entropy_regularization
-        )
         self.nro = args.nro
         self.embeddings = Embedding(
             args.vocab_size,
@@ -59,51 +55,13 @@ class JointProb(pl.LightningModule):
             args.pad,
         )
 
-        self.register_buffer(
-            "v_range",
-            torch.arange(
-                Vocab.size(),
-            ),
-        )
-        self.pure_wfst_scorer = None
-        self.mark_scores = None
-
         if (
             args.tilde_p_choice == "wfst-nfst-composition"
             or args.tilde_p_choice == "wfst-nfst-composition-dummy"
         ):
-            # self.fixed_wfst_marks = torch.nn.Parameter(self.get_fixed_wfst_marks())
-            # wrapped_wfst_scorer = WFSTScorer(
-            #     pad=args.pad,
-            #     eos=args.eos,
-            #     bos=args.bos,
-            #     scorer=self.score_fixed_wfst_marks,
-            # )
-            # wfst_scorer = NRO.nro_wfst_g(
-            #     Vocab.lookup("wfst-start"),
-            #     Vocab.lookup("wfst-end"),
-            #     g=wrapped_wfst_scorer.evaluate_seq,
-            #     pad=args.pad,
-            #     substract_z=False,
-            # )
             nfst_scorer = self.get_base(args, self.embeddings, nro=self.nro)
             self.nfst_scorer = nfst_scorer
-            # self.wfst_scorer = wfst_scorer
-            # composition_scoring = NRO.nro_compose_g(
-            #     Vocab.lookup("cp1"),
-            #     Vocab.lookup("cp2"),
-            #     Vocab.lookup("cpstart"),
-            #     Vocab.lookup("cpend"),
-            #     args.pad,
-            #     args.eos,
-            #     self.wfst_scorer,
-            #     self.nfst_scorer,
-            # )
-
-            # self.composition_scoring = composition_scoring
-            if args.tilde_p_choice == "wfst-nfst-composition-dummy":
-                # used wfst-nfst-composition-dummy in cipher case
-                nre = self.nfst_scorer
+            nre = self.nfst_scorer
 
         elif args.tilde_p_choice == "nfst-composition":
             nre = GlobalCompositionNROScorer(
@@ -118,98 +76,12 @@ class JointProb(pl.LightningModule):
 
         self.tilde_p = nre
         self.pad = args.pad
+        self.proposal = Proposal(args)
 
-        proposal_embeddings = Embedding(
-            args.vocab_size,
-            args.hid_dim,
-            args.pad,
-        )
-        self.input_queries = QueryPiGivenX(
-            args.hid_dim,
-            num_layers=args.num_layers,
-            state_hid_dim=args.hid_dim,
-            embedder=proposal_embeddings,
-            vocab_size=args.vocab_size,
-            pad=args.pad,
-            bos=args.bos,
-            eos=args.eos,
-            drop=args.dropout,
-        )
-        self.io_queries = QueryPiGivenXAndY(
-            args.hid_dim,
-            num_layers=args.num_layers,
-            state_hid_dim=args.hid_dim,
-            embedder=proposal_embeddings,
-            vocab_size=args.vocab_size,
-            pad=args.pad,
-            bos=args.bos,
-            eos=args.eos,
-            drop=args.dropout,
-        )
-
-        self.global_queries = None
-        self.global_proposal_dist = None
-        self.denom_proposal_dist = FSAGRUScorer(
-            args.hid_dim,
-            args.vocab_size,
-            bos=args.bos,
-            eos=args.eos,
-            pad=args.pad,
-            insert_penalty=args.insert_penalty,
-            insert_threshold=args.insert_threshold,
-            length_threshold=args.length_threshold,
-            length_penalty=args.length_penalty,
-            max_length=args.max_length,
-            embeddings=proposal_embeddings,
-            query=self.input_queries,
-            tied_embeddings=args.tied_proposal_embeddings,
-        )
-        self.num_proposal_dist = FSAGRUScorer(
-            args.hid_dim,
-            args.vocab_size,
-            bos=args.bos,
-            eos=args.eos,
-            pad=args.pad,
-            insert_penalty=args.insert_penalty,
-            insert_threshold=args.insert_threshold,
-            length_threshold=args.length_threshold,
-            length_penalty=args.length_penalty,
-            max_length=args.max_length,
-            embeddings=proposal_embeddings,
-            query=self.io_queries,
-            tied_embeddings=args.tied_proposal_embeddings,
-        )
-        self.regularization_dist = FSAMaskScorer(
-            args.hid_dim,
-            args.vocab_size,
-            bos=args.bos,
-            eos=args.eos,
-            pad=args.pad,
-            insert_penalty=args.insert_penalty,
-            insert_threshold=args.insert_threshold,
-            length_threshold=args.length_threshold,
-            length_penalty=args.length_penalty,
-            max_length=args.max_length,
-            embeddings=proposal_embeddings,
-            tied_embeddings=args.tied_proposal_embeddings,
-        )
-
-        self.proposal_modules = torch.nn.modules.ModuleList(
-            [
-                self.denom_proposal_dist,
-                self.num_proposal_dist,
-                self.input_queries,
-                self.io_queries,
-            ]
-        )
+        self.proposal_modules = self.proposal.get_proposal_module()
         logger.info(self.proposal_modules)
-        self.num_sampler = Sampler(self.num_proposal_dist)
-        self.global_sampler = None  # sampler.Sampler(self.global_proposal_dist, )
-        self.regularization_sampler = Sampler(self.regularization_dist)
 
-        self.denom_sampler = Sampler(
-            self.denom_proposal_dist,
-        )
+        self.num_sampler = Sampler(self.proposal.get_num_proposal_dist())
 
         self.k = args.k
         if args.prob_definition == "joint":
@@ -296,21 +168,34 @@ class JointProb(pl.LightningModule):
                 two_level_marks=args.two_level_marks,
                 forced_type=args.force_type,
             )
-        return StaticRNNScorer(
-            args.tilde_p_hid_dim,
-            args.vocab_size,
-            bos=args.bos,
-            pad=args.pad,
-            eos=args.eos,
-            max_length=args.max_length,
-            embeddings=embeddings,
-            locally_normalized=True,
-            num_hidden_states=args.tilde_p_num_layers,
-            rnn_type=args.tilde_p_type,
-            tied_embeddings=args.tied_mark_embeddings,
-            label_smoothing=args.label_smoothing,
-            two_level_marks=args.two_level_marks,
-        )
+        if args.tilde_p_type == "lstm":
+            return StaticRNNScorer(
+                args.tilde_p_hid_dim,
+                args.vocab_size,
+                bos=args.bos,
+                pad=args.pad,
+                eos=args.eos,
+                max_length=args.max_length,
+                embeddings=embeddings,
+                locally_normalized=True,
+                num_hidden_states=args.tilde_p_num_layers,
+                rnn_type=args.tilde_p_type,
+                tied_embeddings=args.tied_mark_embeddings,
+                label_smoothing=args.label_smoothing,
+                two_level_marks=args.two_level_marks,
+            )
+        if args.tilde_p_type == "transformer":
+            mdl = Transformer(
+                num_classes=args.vocab_size, max_output_length=args.max_length
+            )
+            tmp_input = torch.randint(3, 10, (16, 200))
+            tmp_output = torch.randint(3, 10, (16, 100))
+            logits = mdl(tmp_input, tmp_output)
+            print(logits.shape)
+            raise RuntimeError
+            return Transformer(
+                num_classes=args.vocab_size, max_output_length=args.max_length
+            )
 
     def tune_proposal(
         self,
@@ -326,34 +211,7 @@ class JointProb(pl.LightningModule):
         tune_denom: bool = True,
         tune_global: bool = True,
     ):
-        if wfst_emission is not None:
-            (
-                batch_size,
-                cond_denom_emission,
-                cond_denom_transition,
-                denom_emission,
-                denom_transition,
-            ) = self.get_denom_matrices_and_batch_size(
-                denom_emission,
-                denom_transition,
-                numerator_emission,
-                numerator_transition,
-                wfst_emission,
-                wfst_transition,
-            )
-        else:
-            (
-                batch_size,
-                cond_denom_emission,
-                cond_denom_transition,
-                denom_emission,
-                denom_transition,
-            ) = self.get_denom_matrices_and_batch_size(
-                denom_emission,
-                denom_transition,
-                numerator_emission,
-                numerator_transition,
-            )
+        batch_size = numerator_transition.shape[0]
         self.num_sampler.set_masks(numerator_transition, numerator_emission)
         self.num_sampler.set_k(self.proposal_tuning_k)
         gs_expanded = (
@@ -377,16 +235,12 @@ class JointProb(pl.LightningModule):
                 "to_encode_mask": gs_expanded_mask,
             },
         )
-        num_samples_flattened = num_samples.reshape(
-            batch_size * self.proposal_tuning_k, -1
-        )
+
         with torch.no_grad():
             tilde_p = self.tilde_p(self.num_sampler.stripping_pad(num_samples))
             tilde_p_over_q = (tilde_p - log_q_num).reshape(
                 batch_size, self.proposal_tuning_k
             )
-
-            elbo: torch.Tensor = (tilde_p_over_q).detach()
             weights = torch.softmax(tilde_p_over_q, dim=1).detach()
         log_q_num: torch.Tensor = log_q_num.reshape(batch_size, self.proposal_tuning_k)
 
@@ -401,80 +255,7 @@ class JointProb(pl.LightningModule):
         if tune_num:
             to_return["num_loss"] = -(weights * log_q_num).sum(dim=1).mean()
 
-        if tune_global:
-            self.global_sampler.set_masks(denom_transition, denom_emission)
-            self.global_sampler.set_k(self.proposal_tuning_k)
-            log_q_global = self.global_sampler.sample(
-                batch_size * self.proposal_tuning_k, num_samples_flattened
-            )[0]
-            log_q_global = log_q_global.reshape(batch_size, self.proposal_tuning_k)
-            to_return["global_loss"] = (weights * log_q_global).sum(dim=1).mean()
-
-        if tune_denom:
-            self.denom_sampler.set_masks(cond_denom_transition, cond_denom_emission)
-            self.denom_sampler.set_k(self.proposal_tuning_k)
-            log_q_denom = self.denom_sampler.sample(
-                batch_size * self.proposal_tuning_k,
-                num_samples_flattened,
-                query_args={
-                    "to_encode": gs_expanded,
-                    "to_encode_mask": gs_expanded_mask,
-                },
-            )[0].reshape(batch_size, self.proposal_tuning_k)
-            to_return["denom_loss"] = (weights * log_q_denom).sum(dim=1).mean()
-
-            with torch.no_grad():
-                log_q_prop, log_q_sampled = self.denom_sampler.sample(
-                    batch_size * self.proposal_tuning_k,
-                    query_args={
-                        "to_encode": gs_expanded,
-                        "to_encode_mask": gs_expanded_mask,
-                    },
-                )
-                stripped = self.denom_sampler.stripping_pad(log_q_sampled)
-                log_tilde_p = self.tilde_p(stripped)
-                kl_q_tilde_p = torch.mean(log_q_prop - log_tilde_p)
-                to_return["kl_q_tilde_p"] = kl_q_tilde_p
-
         return to_return
-
-    def get_denom_matrices_and_batch_size(
-        self,
-        denom_emission,
-        denom_transition,
-        numerator_emission,
-        numerator_transition,
-        wfst_emission: Optional[torch.Tensor] = None,
-        wfst_transition: Optional[torch.Tensor] = None,
-    ):
-        batch_size = numerator_transition.shape[0]
-        cond_denom_emission = denom_emission.expand(batch_size, -1, -1)
-        cond_denom_transition = denom_transition.expand(batch_size, -1, -1)
-        if self.z_emission is not None:
-            denom_emission = self.z_emission.expand(batch_size, -1, -1)
-            denom_transition = self.z_transition.expand(batch_size, -1, -1)
-        assert numerator_emission.shape[0] == batch_size
-        assert denom_transition.shape[0] == batch_size
-        assert denom_emission.shape[0] == batch_size
-        if wfst_emission is None:
-            return (
-                batch_size,
-                cond_denom_emission,
-                cond_denom_transition,
-                denom_emission,
-                denom_transition,
-            )
-        wfst_emission = wfst_emission.expand(batch_size, -1, -1)
-        wfst_transition = wfst_transition.expand(batch_size, -1, -1)
-        assert wfst_emission.shape[0] == batch_size
-        assert wfst_transition.shape[0] == batch_size
-        return (
-            batch_size,
-            wfst_emission,
-            wfst_transition,
-            wfst_emission,
-            wfst_transition,
-        )
 
     def log_marginalize(
         self,
@@ -523,15 +304,7 @@ class JointProb(pl.LightningModule):
         :param denom_transition:
         :return:
         """
-        (
-            batch_size,
-            cond_denom_emission,
-            cond_denom_transition,
-            denom_emission,
-            denom_transition,
-        ) = self.get_denom_matrices_and_batch_size(
-            denom_emission, denom_transition, numerator_emission, numerator_transition
-        )
+
         k = self.k
         # use iwae estimator, has k samples
         num_prob, _, num_samples, log_w = self.log_marginalize(
@@ -581,19 +354,12 @@ class JointProb(pl.LightningModule):
         num_prob, denom_prob = self.forward(*first_six)
         self.log("train_num_prob", num_prob.detach().mean())
         p_loss = -(num_prob - denom_prob).mean()
-        if self.structured_entropy_regularization > 0:
-            p_loss -= self.structured_ent_reg()
         self.log("train_loss", p_loss.detach())
         return p_loss
 
     def train_q(self, batch, first_six):
-        wfst_emission, wfst_transition = None, None
-        if len(batch) > 6:
-            wfst_emission, wfst_transition = batch[6], batch[7]
         loss_dict = self.tune_proposal(
             *first_six,
-            wfst_emission=wfst_emission,
-            wfst_transition=wfst_transition,
             tune_num=self.tune_num,
             tune_denom=self.tune_denom,
             tune_global=self.tune_global,
@@ -611,8 +377,6 @@ class JointProb(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         if not self.validation_z_set:
             self.validation_z_set = True
-        free_sample_size = 32
-
         first_six = batch[:6]
         if self.tune_p:
             num_prob, denom_prob = self.forward(*first_six)
@@ -692,59 +456,6 @@ class JointProb(pl.LightningModule):
         mark = l[2]
         prob = (l[0] - l[1]).flatten()[0].item()
         return prob, mark
-
-    def set_mark_scores(self, pad):
-        embedded = self.embeddings(self.v_range)
-        neg_inf = torch.log(
-            torch.zeros_like(self.v_range, dtype=torch.get_default_dtype())
-        )
-        self.mark_scores = self.pure_wfst_scorer(embedded).reshape(self.v_range.shape)
-        self.mark_scores = torch.nn.functional.log_softmax(self.mark_scores, dim=0)
-        self.mark_scores = torch.where(
-            self.v_range == pad, torch.zeros_like(self.mark_scores), self.mark_scores
-        )
-        self.mark_scores = torch.where(self.v_range == 0, neg_inf, self.mark_scores)
-
-    def score_marks(self, t: torch.Tensor):
-        return self.mark_scores[t]
-
-    def score_fixed_wfst_marks(self, t: torch.Tensor):
-        return self.fixed_wfst_marks[t]
-
-    def get_fixed_wfst_marks(self):
-        to_return = np.empty(Vocab.size())
-        for k in range(Vocab.size()):
-            w = 0.0
-            try:
-                r_lookedup = Vocab.r_lookup(k)
-                if isinstance(r_lookedup, str) and r_lookedup.startswith("wfst#"):
-                    w = float(r_lookedup.split("#")[1])
-                    print(f"found key {r_lookedup}\t{w}")
-            except KeyError as e:
-                pass
-            to_return[k] = w
-
-        return torch.from_numpy(to_return).to(torch.get_default_dtype())
-
-    def structured_ent_reg(self):
-        k = 16
-        assert self.structured_entropy_regularization > 0
-
-        self.regularization_sampler.set_masks(
-            transition=self.local_state_matrices_transition,
-            emission=self.local_state_matrices_emission,
-        )
-        self.regularization_sampler.set_k(k)
-        _, sampled = self.regularization_sampler.sample(
-            k,
-        )
-        unnormalized_log_p = self.tilde_p(
-            self.regularization_sampler.stripping_pad(sampled)
-        )
-        return (
-            unnormalized_log_p.sum(dim=-1).mean()
-            * self.structured_entropy_regularization
-        )
 
     def set_pretrained(self):
         for machine_type in self._pretrained_model_types.keys():

@@ -368,7 +368,13 @@ class TR:
             for x in self.input_symbols():
                 for y in self.m.keys():
                     label = tuple(
-                        [input_mark, Vocab.lookup(x), output_mark, Vocab.lookup(y)]
+                        [
+                            Vocab.lookup("insertion-mark"),
+                            input_mark,
+                            Vocab.lookup(x),
+                            output_mark,
+                            Vocab.lookup(y),
+                        ]
                     )
                     fst.add_arc(
                         init_state,

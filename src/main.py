@@ -20,7 +20,7 @@ def add_dot_operation(dict_cfg):
     return dotdict(dict_cfg)
 
 
-@hydra.main(config_path="./conf", config_name="tr.yaml")
+@hydra.main(config_path="./conf", config_name="tr_sub_20k.yaml")
 def main(config: DictConfig):
     logger.info(OmegaConf.to_yaml(config, resolve=True))
     dict_cfg = OmegaConf.to_container(config, resolve=True)

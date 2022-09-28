@@ -61,17 +61,26 @@ class Trainer:
 
         early_stop = EarlyStopping(
             monitor="val_loss",
-            patience=20,
+            patience=10,
             verbose=True,
         )
         model = JointProb(cfg)
         accelerator = "cpu" if int(cfg.gpu) == 0 else "gpu"
-        trainer = pl.Trainer.from_argparse_args(
-            cfg,
-            logger=tb_logger,
-            callbacks=[model_checkpoint, early_stop],
-            accelerator=accelerator,
-            devices=int(cfg.gpu),
-        )
+        # FIXME: hacky way to handle cpu-only case
+        if accelerator == "cpu":
+            trainer = pl.Trainer.from_argparse_args(
+                cfg,
+                logger=tb_logger,
+                callbacks=[model_checkpoint, early_stop],
+                accelerator=accelerator,
+            )
+        else:
+            trainer = pl.Trainer.from_argparse_args(
+                cfg,
+                logger=tb_logger,
+                callbacks=[model_checkpoint, early_stop],
+                accelerator=accelerator,
+                devices=int(cfg.gpu),
+            )
 
         trainer.fit(model, data)

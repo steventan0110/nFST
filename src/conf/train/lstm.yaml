@@ -6,7 +6,6 @@ proposal_dist: ps
 num_layers: 2
 tilde_p_num_layers: 2
 tilde_p_hid_dim: 256
-tilde_p_type: "LSTM"
 hid_dim: 256
 k: 16
 dropout: 0.3
@@ -16,6 +15,7 @@ label_smoothing: 0.1
 
 #TILDE_P_CHOICE="wfst-nfst-composition"
 tilde_p_choice: "wfst-nfst-composition-dummy"
+tilde_p_type: "LSTM"
 prob_definition: joint
 insert_threshold: 0
 insert_penalty: 5.0
@@ -28,19 +28,19 @@ ser_weight: 1e-2
 proposal_tuning_k: 32
 tune_global: False
 tune_denom: False
+tune_num: True
 tune_p: True
 tune_q: True
 
-structured_entropy_regularization: 0.1
 force_type: None
 two_level_marks: False
 tied_mark_embeddings: False
 tied_proposal_embeddings: False
-tune_num: True
+
 exp_window_coefficient: 0.01 
 mask: False
 nro: False
 
-train_config: hid-${.hid_dim}/layers-${.num_layers}/tilde-p-hid-${.tilde_p_hid_dim}/tilde-p-layers-${.tilde_p_num_layers}/drop-${.dropout}/clip-${.grad_clip}/bsz-${.batch_size}/max-seq-len-${.max_length}/length-threshold-${.length_threshold}/estimator-${.estimator}/proposal-${.proposal_dist}/tilde-p-type-${.tilde_p_type}/k-${.k}/tune-q-${.tune_q}/learning-rate-${.learning_rate}/tied-mark-embeddings-${.tied_mark_embeddings}/label-smoothing-${.label_smoothing}/two-level-marks-${.two_level_marks}/tilde-p-choice-${.tilde_p_choice}/SER_WEIGHT-${.ser_weight}
+train_config: hid-${.hid_dim}/layers-${.num_layers}/tilde-p-hid-${.tilde_p_hid_dim}/tilde-p-layers-${.tilde_p_num_layers}/drop-${.dropout}/clip-${.grad_clip}/bsz-${.batch_size}/max-seq-len-${.max_length}/length-threshold-${.length_threshold}/estimator-${.estimator}/proposal-${.proposal_dist}/tilde-p-type-${.tilde_p_type}/k-${.k}/tune-q-${.tune_q}/learning-rate-${.learning_rate}/tied-mark-embeddings-${.tied_mark_embeddings}/label-smoothing-${.label_smoothing}/two-level-marks-${.two_level_marks}/tilde-p-choice-${.tilde_p_choice}
 
 

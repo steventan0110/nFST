@@ -9,6 +9,7 @@ from src.util.preprocess_util import Vocab
 import src.modules.model as model
 from src.modules.queries import EncodedQuery, QueryBase
 from src.modules.nros import NRO
+from src.util.preprocess_util import Utils
 
 
 # TODO: refactor this file

@@ -78,7 +78,7 @@ def get_baseline(m, n):
     for (k, v) in m.items():
         # sort the translation based on score
         if len(v) < 20:
-            logger.info("skip bad pair ", v)
+            logger.info(f"skip bad pair {v}")
             continue
         reorder_v = sorted(v, key=lambda x: x[1])
         order = [0 for _ in range(len(v))]
@@ -103,7 +103,7 @@ def ner_baseline(m):
 
     for (k, v) in m.items():
         if len(v) != 21 and len(v) != 20:
-            logger.info("skip bad pair ", v)
+            logger.info(f"skip bad pair {v}")
             continue
         else:
             reorder_v = sorted(v, key=lambda x: x[1])

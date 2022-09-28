@@ -67,20 +67,22 @@ class Decoder:
     def decode(self, path, split):
         Path(f"{self.decode_prefix}/{split}").mkdir(parents=True, exist_ok=True)
         filenames = glob(f"{path}/*.npz")
+        visualize = True
         for fname in tqdm(filenames, disable=True):
             bfname = basename(fname)
             decoded_fname = f"{self.decode_prefix}/{split}/{bfname}.decoded"
 
-            if not exists(decoded_fname):
-                print(decoded_fname)
+            if (not exists(decoded_fname)) or visualize:
                 try:
                     prob, mark = self.model.decode_from_npz(
                         fname, vocab_size=self.args.vocab_size, pad=self.args.pad
                     )
-                    with open(decoded_fname, mode="w") as fh:
-                        fh.write(f"{prob}\n")
-                    # tokens = [Vocab.r_lookup(_) for _ in mark.tolist()]
-                    # logger.info(tokens)
+                    if visualize:
+                        tokens = [Vocab.r_lookup(_) for _ in mark.tolist()]
+                        logger.info(tokens)
+                    else:
+                        with open(decoded_fname, mode="w") as fh:
+                            fh.write(f"{prob}\n")
                 except Exception as e:
                     logger.error(f"cannot decode {fname}: {e}")
             else:
