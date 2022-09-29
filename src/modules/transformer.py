@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn.init import xavier_normal_
+from torch.functional import F
 import math
 
 
@@ -37,6 +39,154 @@ def generate_square_subsequent_mask(size: int):
         .masked_fill(mask == 1, float(0.0))
     )
     return mask
+
+
+class DecoderBlock(nn.Module):
+    def __init__(self, embed_dim, nheads, max_len):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(embed_dim)
+        self.ln2 = nn.LayerNorm(embed_dim)
+        self.attn = MultiheadAttention(embed_dim, nheads, max_len)
+        self.ff = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 4),
+            nn.GELU(),
+            nn.Linear(embed_dim * 4, embed_dim),
+            nn.Dropout(0.1),
+        )
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        x = x + self.ff(self.ln2(x))
+        return x
+
+
+class MultiheadAttention(nn.Module):
+    """my own batch-first implementation of multihead attention"""
+
+    def __init__(self, embed_dim, num_heads, max_len):
+        super().__init__()
+        self.num_heads = num_heads
+        assert (
+            embed_dim % self.num_heads == 0
+        ), "invalid heads and embedding dimension configuration"
+        self.key = nn.Linear(embed_dim, embed_dim)
+        self.value = nn.Linear(embed_dim, embed_dim)
+        self.query = nn.Linear(embed_dim, embed_dim)
+        self.proj = nn.Linear(embed_dim, embed_dim)
+        self.attn_dropout = nn.Dropout(0.1)
+        self.proj_dropout = nn.Dropout(0.1)
+        self.register_buffer(
+            "mask", torch.tril(torch.ones(max_len, max_len)).unsqueeze(0).unsqueeze(0)
+        )
+        self.reset_params()
+
+    def reset_params(self):
+        xavier_normal_(self.key.weight)
+        xavier_normal_(self.value.weight)
+        xavier_normal_(self.query.weight)
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        seq_len = x.size(1)
+        # x.shape == (batch_size, seq_len, embed_dim)
+        k_t = (
+            self.key(x)
+            .reshape(batch_size, seq_len, self.num_heads, -1)
+            .permute(0, 2, 3, 1)
+        )
+        v = (
+            self.value(x)
+            .reshape(batch_size, seq_len, self.num_heads, -1)
+            .transpose(1, 2)
+        )
+        q = (
+            self.query(x)
+            .reshape(batch_size, seq_len, self.num_heads, -1)
+            .transpose(1, 2)
+        )
+        # shape == (batch_size, num_heads, seq_len, head_dim)
+
+        attn = torch.matmul(q, k_t) / math.sqrt(q.size(-1))
+
+        # attn.shape == (batch_size, num_heads, seq_len, seq_len)
+        mask = self.mask[:, :, :seq_len, :seq_len]
+        attn = attn.masked_fill(mask == 0, float("-1e8"))
+        attn = self.attn_dropout(attn)
+
+        # attn.shape == (batch_size, num_heads, seq_len, seq_len)
+        attn = F.softmax(attn, dim=-1)
+
+        y = torch.matmul(attn, v)
+
+        # y.shape == (batch_size, num_heads, seq_len, head_dim)
+        y = y.transpose(1, 2)
+        # y.shape == (batch_size, seq_len, num_heads, head_dim)
+        y = y.reshape(batch_size, seq_len, -1)
+        # y.shape == (batch_size, seq_len, embed_dim)
+        y = self.proj_dropout(self.proj(y))
+
+        return y
+
+
+class TransformerLM(nn.Module):
+    """
+    Classic Transformer that both encodes and decodes.
+
+    Prediction-time inference is done greedily.
+
+    NOTE: start token is hard-coded to be 0, end token to be 1. If changing, update predict() accordingly.
+    """
+
+    def __init__(
+        self, num_classes: int, max_output_length: int, dim: int, bos, pad, eos
+    ):
+        super().__init__()
+
+        # Parameters
+        self.dim = dim
+        self.pad = pad
+        self.bos = bos
+        self.eos = eos
+        self.max_output_length = max_output_length
+        nhead = 8
+        num_layers = 6
+
+        # Encoder part
+        self.embedding = nn.Embedding(num_classes, dim)
+        self.pos_encoder = PositionalEncoding(d_model=self.dim)
+        self.transformer_decoder = nn.Sequential(
+            *[DecoderBlock(dim, nhead, max_output_length) for _ in range(num_layers)]
+        )
+        self.ln = nn.LayerNorm(self.dim)
+        self.fc = nn.Linear(self.dim, num_classes)
+
+        # It is empirically important to initialize weights properly
+        self.init_weights()
+
+    def init_weights(self):
+        initrange = 0.1
+        self.embedding.weight.data.uniform_(-initrange, initrange)
+        self.fc.bias.data.zero_()
+        self.fc.weight.data.uniform_(-initrange, initrange)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """
+        Input: (B, Sx) with elements in (0, C) where C is num_classes
+        Output: (B, Sy, C) logits as well as a score based on force-decoding (B,)
+        """
+
+        pad_mask = (~(input == self.pad)).long()
+        x = self.embedding(input) * math.sqrt(self.dim)  # (B, Sx, E)
+        x = self.pos_encoder(x)  # (B, Sx, E)
+        x = self.transformer_decoder(x)  # (B, Sx, E)
+        x = self.ln(x)
+        x = self.fc(x)  # bz x seq x Vocab
+        x = F.log_softmax(x, dim=2)
+        log_prob = torch.gather(x, 2, input.unsqueeze(2)).squeeze(2)  # bz x seq
+        log_prob = log_prob * pad_mask  # apply mask to remove pad logits
+        # apply mask
+        out = torch.sum(log_prob, dim=1)  # bz
+        return out
 
 
 class Transformer(nn.Module):
@@ -106,12 +256,10 @@ class Transformer(nn.Module):
         Output
             (Sx, B, E) embedding
         """
-        x = x.permute(1, 0)  # (Sx, B, E)
+        x = x.permute(1, 0)  # (Sx, B)
         x = self.embedding(x) * math.sqrt(self.dim)  # (Sx, B, E)
         x = self.pos_encoder(x)  # (Sx, B, E)
         x = self.transformer_encoder(x)  # (Sx, B, E)
-        print("encoder output shape")
-        print(x.shape)
         return x
 
     def decode(self, y: torch.Tensor, encoded_x: torch.Tensor) -> torch.Tensor:

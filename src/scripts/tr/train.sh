@@ -7,7 +7,7 @@ python $ROOT/main.py \
     output_mapping="/home/wtan12/seq-samplers/tr/nfst/${lang}.graphs.sym" \
     language=$lang \
     fairseq_ckpt="/export/c01/kitsing/dakshina-small-fairseq/checkpoints/${lang}" \
-    gpu=0 \
+    gpu=1 \
     do_preprocess=False \
     do_train=True \
     do_fairseq=False \

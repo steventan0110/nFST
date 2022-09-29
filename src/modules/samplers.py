@@ -148,6 +148,9 @@ class Sampler:
                 == self.model.transition_k.shape[0]
                 == self.model.emission_k.shape[0]
             )
+        # print(batch_size)
+        # print(to_evaluate)
+        # print(query_args)
         results = self.stateful_sample(
             batch_size=batch_size,
             to_evaluate=to_evaluate,

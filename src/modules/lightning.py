@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import torch
 import pickle
 from torch.nn.modules import Embedding
-from src.modules.transformer import Transformer
+from src.modules.transformer import TransformerLM
 from src.util.preprocess_util import Vocab, Utils
 
 # from src.modules import scorers, sampler, nre_scorers, transducers, queries
@@ -168,7 +168,7 @@ class JointProb(pl.LightningModule):
                 two_level_marks=args.two_level_marks,
                 forced_type=args.force_type,
             )
-        if args.tilde_p_type == "lstm":
+        if args.tilde_p_type == "LSTM":
             return StaticRNNScorer(
                 args.tilde_p_hid_dim,
                 args.vocab_size,
@@ -185,16 +185,72 @@ class JointProb(pl.LightningModule):
                 two_level_marks=args.two_level_marks,
             )
         if args.tilde_p_type == "transformer":
-            mdl = Transformer(
-                num_classes=args.vocab_size, max_output_length=args.max_length
-            )
-            tmp_input = torch.randint(3, 10, (16, 200))
-            tmp_output = torch.randint(3, 10, (16, 100))
-            logits = mdl(tmp_input, tmp_output)
-            print(logits.shape)
-            raise RuntimeError
-            return Transformer(
-                num_classes=args.vocab_size, max_output_length=args.max_length
+            # x = torch.LongTensor(
+            #     [
+            #         [
+            #             6,
+            #             23,
+            #             6,
+            #             33,
+            #             7,
+            #             174,
+            #             6,
+            #             20,
+            #             6,
+            #             20,
+            #             6,
+            #             21,
+            #             8,
+            #             6,
+            #             16,
+            #             7,
+            #             72,
+            #             7,
+            #             46,
+            #             7,
+            #             50,
+            #             6,
+            #             29,
+            #             7,
+            #             61,
+            #             8,
+            #             6,
+            #             16,
+            #             7,
+            #             57,
+            #             8,
+            #             6,
+            #             23,
+            #             7,
+            #             51,
+            #             7,
+            #             56,
+            #             2,
+            #             3,
+            #             3,
+            #             3,
+            #             3,
+            #         ]
+            #     ]
+            # )
+            # mdl = TransformerLM(
+            #     num_classes=args.vocab_size,
+            #     max_output_length=args.max_length,
+            #     dim=args.hid_dim,
+            #     bos=args.bos,
+            #     pad=args.pad,
+            #     eos=args.eos,
+            # )
+            # output = mdl(x)
+            # print(output)
+            # raise RuntimeError
+            return TransformerLM(
+                num_classes=args.vocab_size,
+                max_output_length=args.max_length,
+                dim=args.hid_dim,
+                bos=args.bos,
+                pad=args.pad,
+                eos=args.eos,
             )
 
     def tune_proposal(
@@ -235,9 +291,11 @@ class JointProb(pl.LightningModule):
                 "to_encode_mask": gs_expanded_mask,
             },
         )
+        # print(f"sample loss q: {log_q_num}")
 
         with torch.no_grad():
             tilde_p = self.tilde_p(self.num_sampler.stripping_pad(num_samples))
+            # print(f"tilde_p: {tilde_p}")
             tilde_p_over_q = (tilde_p - log_q_num).reshape(
                 batch_size, self.proposal_tuning_k
             )
@@ -334,16 +392,27 @@ class JointProb(pl.LightningModule):
         return (to_mask != self.num_sampler.model.__pad__).to(torch.get_default_dtype())
 
     def training_step(self, batch, batch_idx, optimizer_idx=0, **kwargs):
+        def param_sum(model):
+            p_sum = 0
+            for p in model.parameters():
+                p_sum += p.sum().item()
+            return p_sum
+
         self.validation_z_set = False
         first_six = batch[:6]
         if self.tune_p and self.tune_q:
             if optimizer_idx == 0:
+                # print(param_sum(self.tilde_p))
+                # print(param_sum(self.num_sampler.model))
                 return self.train_q(batch, first_six)
             elif optimizer_idx == 1:
+                # print(param_sum(self.tilde_p))
+                # print(param_sum(self.num_sampler.model))
                 return self.train_p(first_six)
             else:
                 raise NotImplementedError
         elif self.tune_p:
+            self.tilde_p.parameters()
             return self.train_p(first_six)
         elif self.tune_q:
             return self.train_q(batch, first_six)
@@ -365,6 +434,7 @@ class JointProb(pl.LightningModule):
             tune_global=self.tune_global,
         )
         q_loss = sum([_ for _ in loss_dict.values() if _ is not None])
+        # print(f"q_loss: {q_loss}")
         if loss_dict["denom_loss"] is not None:
             self.log("kl_q_tilde_p", loss_dict["kl_q_tilde_p"])
         for k in ("num_loss", "denom_loss", "global_loss"):

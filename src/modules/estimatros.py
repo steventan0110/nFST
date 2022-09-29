@@ -17,8 +17,15 @@ class Estimators:
         )
         log_q = log_q.reshape((batch_size, k_prime))
         unnormalized_log_p = unnormalized_model(proposal.stripping_pad(samples))
+        # print("log q value from proposal:")
+        # print(log_q)
+
         samples = samples.reshape((batch_size, k_prime, -1))
         unnormalized_log_p = unnormalized_log_p.reshape((batch_size, k_prime))
+
+        # print("log_p value from model output")
+        # print(unnormalized_log_p)
+
         log_w = unnormalized_log_p - log_q.detach()
         log_w = log_w.reshape((batch_size, k_prime))
         return log_q, log_w, samples
