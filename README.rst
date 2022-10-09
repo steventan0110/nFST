@@ -5,5 +5,5 @@ nFST (neuralized finite state transducer) is a sequence modeling toolkit
 that allows users to define their own latent variable models (with help of finite state machines) to
 train sequence models. Using FST to represent latent structure is a generic approach that
 can be applied to various tasks including transliteration, slot filtering (tagging), cipher decoding, etc.
-The formalism is described in the `thesis <xx>`_.
+The formalism is described in the `thesis <xx>`_ and documentation is available `here <https://steventan0110-nfst-tutorial.readthedocs.io/en/latest/index.html>`_.
 
