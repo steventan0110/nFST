@@ -1,25 +1,32 @@
 # root config for cipher task
 defaults:
-  - preprocess: standard
-  - train_config: lstm
   - _self_
+  - preprocess: standard
+  - train: transformer_6_8
 
-limit: 100000
+limit: 10000000
 task: "snips"
 num_candidates: 20
 seed: 42
-cpu_count: 8
+gpu: ???
 output_dir: ???
-phone_sym: ???
+output_mapping: ???
 tag_mapping: ???
+fairseq_ckpt: ???
+agnostic: ???
+latent: ???
+after: ???
 vocab: ${output_dir}/${task}/${task}.vocab
-serialize_prefix: ${output_dir}/${task}/outputs/fst/${preprocess.preprocess_config}
-train_prefix: ${output_dir}/${task}/outputs/train/${train_config.train_config}
-# need to modify define agnostic, latent, after beforehand. Not implemented
-# prefix: /export/b02/wtan/dataset/snips/agnostic-${AGNOSTIC}/latent-${LATENT}/after-${AFTER}
+serialize_prefix: ${output_dir}/${task}/outputs/fst/agnostic-${.agnostic}/latent-${.latent}/after-${.after}/${preprocess.preprocess_config}
+prefix: /export/b02/wtan/dataset/snips/agnostic-${.agnostic}/latent-${.latent}/after-${.after}
+training_outputs: ${output_dir}/${task}/outputs/model/agnostic-${.agnostic}/latent-${.latent}/after-${.after}/${train.train_config}
+serialize_fst_path: ${output_dir}/${task}/outputs/fairseq/agnostic-${.agnostic}/latent-${.latent}/after-${.after}
+decode_prefix: ${output_dir}/${task}/outputs/decode/agnostic-${.agnostic}/latent-${.latent}/after-${.after}/${train.train_config}
 
-
-
-  
-
+# action toggle
+do_preprocess: ???
+do_train: ???
+do_fairseq: ???
+do_decode: ???
+do_eval: ???
 

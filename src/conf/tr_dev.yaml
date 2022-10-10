@@ -1,0 +1,32 @@
+# root config for cipher task
+defaults:
+  - _self_
+  - preprocess: standard
+  - train: transformer_4_4
+
+limit: 1000000
+task: "tr-filter-dev"
+num_candidates: 20
+seed: 42
+gpu: ???
+output_dir: ???
+output_mapping: ???
+input_mapping: ???
+language: ???
+fairseq_ckpt: ???
+sub_size: 20000
+machine_type: sub
+vocab: ${output_dir}/${task}/${task}.vocab
+serialize_prefix: ${output_dir}/${task}/outputs/fst/${language}/${preprocess.preprocess_config}
+prefix: /export/b02/wtan/dataset/tr
+training_outputs: ${output_dir}/${task}/outputs/model/${language}/${train.train_config}
+serialize_fst_path: ${output_dir}/${task}/outputs/fairseq/${language}
+decode_prefix: ${output_dir}/${task}/outputs/decode/${language}/${train.train_config}
+
+# action toggle
+do_preprocess: ???
+do_train: ???
+do_fairseq: ???
+do_decode: ???
+do_eval: ???
+
