@@ -2,7 +2,7 @@
 defaults:
   - _self_
   - preprocess: standard
-  - train: transformer_6_8
+  - train: t_4_4_r
 
 limit: 1000000
 task: "tr-filter-sub-20000"

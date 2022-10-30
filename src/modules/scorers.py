@@ -349,6 +349,7 @@ class LeftToRightScorer(PaddedScorer):
         next_h, scores, updated_metadata = self.actual_left_to_right_score(
             left_h, left_inp, metadata
         )
+
         updated_metadata["length"] = metadata["length"] + 1
         updated_metadata["not_cleared"] = True
         scores_mask = self.mask_out_invalid(left_inp, metadata=metadata)
@@ -683,6 +684,7 @@ class FSAGRUScorer(GRUScorer):
                     .expand(-1, self.k, -1, -1)
                     .reshape(-1, self.emission.shape[1], self.emission.shape[2])
                 )
+
                 self.transition_k = (
                     self.transition.view(
                         self.emission.shape[0],
@@ -693,6 +695,7 @@ class FSAGRUScorer(GRUScorer):
                     .expand(-1, self.k, -1, -1)
                     .reshape(-1, self.transition.shape[1], self.transition.shape[2])
                 )
+
         except Exception as e:
             print(f"k={k} batch_size={self.emission.shape[0]}")
             raise e
@@ -1179,7 +1182,7 @@ class StaticRNNScorer(CompositeScorer):
 
         :param left_h: batch_size x hid_dim x num_hidden_states
         :param left_inp: batch_size
-        :param metadata:
+        :param metadata: broad-coverage challenge corpus forsentence understanding through inference
         :return:
         """
         assert not self.two_level_marks

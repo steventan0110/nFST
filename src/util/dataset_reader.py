@@ -1,6 +1,7 @@
 from argparse import ArgumentParser, Namespace
 from os.path import exists
 from typing import *
+from xml.sax import default_parser_list
 
 from numpy import load
 from pytorch_lightning import LightningDataModule
@@ -47,7 +48,7 @@ class T9FSADataModule(LightningDataModule):
         self,
         prefix,
         lang,
-        sub_size,
+        sub_size=None,
         limit: Optional[int] = None,
         serialize_prefix: str = None,
         batch_size: int = 1,
@@ -77,6 +78,10 @@ class T9FSADataModule(LightningDataModule):
             # TODO: use duplicate codes for now for transliteration dataset
             for dataset_split in ("train", "dev", "test"):
                 file_path = f"{self.prefix}/{dataset_split}/{self.language}_{dataset_split}_filter_10_{self.sub_size}.tsv"
+                # FIXME: remove this to use train data
+                # if dataset_split == "train":
+                #     file_path = f"{self.prefix}/dev/{self.language}_dev_filter_10_{self.sub_size}.tsv"
+
                 current_split = []
                 current_fst_split = []
 

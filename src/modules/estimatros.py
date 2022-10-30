@@ -4,12 +4,13 @@ import torch
 import numpy as np
 from src.modules.scorers import PaddedScorer, ScorerBase
 from src.modules.samplers import Sampler
+from torch.functional import F
 
 
 class Estimators:
     @staticmethod
     def batched_importance_sampling(
-        batch_size, k_prime, proposal, query_args, unnormalized_model
+        batch_size, k_prime, proposal, query_args, unnormalized_model, step
     ):
         proposal.set_k(k_prime)
         log_q, samples = proposal.sample(
@@ -17,14 +18,13 @@ class Estimators:
         )
         log_q = log_q.reshape((batch_size, k_prime))
         unnormalized_log_p = unnormalized_model(proposal.stripping_pad(samples))
-        # print("log q value from proposal:")
-        # print(log_q)
-
         samples = samples.reshape((batch_size, k_prime, -1))
         unnormalized_log_p = unnormalized_log_p.reshape((batch_size, k_prime))
-
-        # print("log_p value from model output")
-        # print(unnormalized_log_p)
+        # if step % 150 == 0:
+        #     print("log q value from proposal:")
+        #     print(log_q[0])
+        #     print("log_p value from model output")
+        #     print(unnormalized_log_p[0])
 
         log_w = unnormalized_log_p - log_q.detach()
         log_w = log_w.reshape((batch_size, k_prime))
@@ -36,10 +36,11 @@ class Estimators:
         unnormalized_model: torch.nn.Module,
         batch_size: int,
         k: int,
+        step,
         query_args: Optional[Dict] = None,
     ):
         log_q, log_w, samples = Estimators.batched_importance_sampling(
-            batch_size, k, proposal, query_args, unnormalized_model
+            batch_size, k, proposal, query_args, unnormalized_model, step
         )
         return torch.logsumexp(log_w, dim=1) - np.log(k), log_q, samples, log_w
 

@@ -6,6 +6,7 @@ import numpy as np
 import logging
 import re
 from collections import defaultdict
+from seqeval.metrics import f1_score, classification_report
 
 logger = logging.getLogger("Rerank[Eval]")
 
@@ -44,7 +45,7 @@ def get_prob(m, prefix):
         gold_idx = None
         for (idx, (tgt, score, isRef)) in enumerate(v):
             tgt_vocab = string_to_vocab(tgt)
-            hash_path = Utils.get_hashed_name(src_vocab, tgt_vocab, prefix)
+            hash_path = Utils.get_hashed_name(tgt_vocab, src_vocab, prefix)
             filename = f"{hash_path}.npz.decoded"
             if exists(filename):
                 with open(filename, "r") as f:
@@ -74,23 +75,18 @@ def get_prob(m, prefix):
 
 def get_baseline(m, n):
     out = []
-    lang_id_mistake = 0
     for (k, v) in m.items():
         # sort the translation based on score
         if len(v) < 20:
-            logger.info(f"skip bad pair {v}")
+            print("skip bad pair ")
             continue
         reorder_v = sorted(v, key=lambda x: x[1])
         order = [0 for _ in range(len(v))]
         for i in range(len(v)):
             if reorder_v[i][2] == 1:
                 order[i] = 1
-                gold_lang_id = reorder_v[i][0][0]
-                if reorder_v[0][0][0] != gold_lang_id:
-                    lang_id_mistake += 1
                 break
         out.append(order)
-    logger.info(f"Number of lang id mistake from fairseq: {lang_id_mistake}")
     return out
 
 
@@ -102,8 +98,8 @@ def ner_baseline(m):
         return [Vocab.lookup(_) for _ in s]
 
     for (k, v) in m.items():
-        if len(v) != 21 and len(v) != 20:
-            logger.info(f"skip bad pair {v}")
+        if len(v) < 20:
+            print("skip bad pair")
             continue
         else:
             reorder_v = sorted(v, key=lambda x: x[1])
@@ -117,14 +113,16 @@ def ner_baseline(m):
     return out
 
 
-def ner_rerank(m, prefix):
+def ner_rerank(m, prefix, gold_set):
+    from os.path import exists
+
     def string_to_vocab(s):
         return [Vocab.lookup(_) for _ in s]
 
     out = []
     for (k, v) in m.items():
-        if len(v) != 21 and len(v) != 20:
-            logger.info("skip bad pair")
+        if len(v) < 20:
+            print("skip bad pair")
             continue
         # retrieve score for all pairs
         src_vocab = string_to_vocab(k)
@@ -134,11 +132,11 @@ def ner_rerank(m, prefix):
         for (idx, (tgt, _, isRef)) in enumerate(v):
             if isRef == 1:
                 gold_tgt = tgt
-                if len(v) == 21:
+                if k not in gold_set:
                     # hypothesis has no gold output, should not expose the oracle to fst as well
                     continue
             tgt_vocab = string_to_vocab(tgt)
-            hash_path = Utils.get_hashed_name(src_vocab, tgt_vocab, prefix)
+            hash_path = Utils.get_hashed_name(tgt_vocab, src_vocab, prefix)
             filename = f"{hash_path}.npz.decoded"
             if exists(filename):
                 with open(filename, "r") as f:
@@ -146,18 +144,17 @@ def ner_rerank(m, prefix):
                     if prob > max_prob:
                         max_prob = prob
                         best_hyp = tgt
-            else:
-                logger.info("hash file for {} does not exist".format(k))
+            # else:
+            #     print("hash file for {} does not exist".format(k))
         assert gold_tgt is not None
         if best_hyp is None:
-            logger.info("no string other than gold is accepted")
+            print("no string other than gold is accepted")
             continue
         out.append((gold_tgt, best_hyp))
     return out
 
 
-def get_prob_for_all_sentences(ref, out):
-    # TODO: need to take into account translation direction of fairseq
+def get_prob_for_all_sentences(ref, out, tag_mapping, slot=None):
     def convert_string_vocab(sent):
         temp = "".join(sent.rstrip().split(" "))
         temp = re.sub("<<unk>>", "", temp)
@@ -169,14 +166,14 @@ def get_prob_for_all_sentences(ref, out):
         for tag in sent.rstrip().split(" "):
             if tag.startswith("madeupword") or tag == "<unk>" or tag == "<<unk>>":
                 continue
-            out.append(tag)
+            out.append(tag_mapping[int(tag)])
         return out
 
     m = defaultdict(list)
+    gold_available_set = []
     with open(ref, "r") as ref_h:
         data = ref_h.read()
         src, tgt, hypo = None, None, None
-
     for (idx, sent) in enumerate(data.split("\n")):
         if sent.startswith("S"):
             src = convert_string_vocab(sent.split("\t")[1])
@@ -184,6 +181,9 @@ def get_prob_for_all_sentences(ref, out):
             tgt = convert_tag_vocab(sent.split("\t")[1])
         elif sent.startswith("H"):
             score = sent.split("\t")[1]
+            if src == " ":
+                print("skip bad pair")
+                continue
             m[src].append((tgt, score, 1))  # 1 meaning this is the gold translation
 
     # now we start populating all test results
@@ -199,45 +199,61 @@ def get_prob_for_all_sentences(ref, out):
             score = sent.split("\t")[1]
             hyp = convert_tag_vocab(sent.split("\t")[2])
             if src not in m:
-                logger.info(f"Preprocess err, {tgt} not in gold standard translation")
+                print("Preprocess err, {} not in gold standard translation".format(tgt))
+                continue
+            if src == " ":
+                print("skip bad pair")
                 continue
             if hyp == tgt:
-                logger.info("hypothesis matches gold tgt, skip")
+                print("hypothesis matches gold tgt, skip")
+                gold_available_set.append(src)
                 continue
             m[src].append((hyp, score, 0))  # 0 meaning this is not the gold translation
-    return m
+
+    # add slotrefine data
+    if slot is not None:
+        with open(slot, "r") as fr:
+            data = fr.read()
+        src, tgt, hypo = None, None, None
+        for (idx, sent) in enumerate(data.split("\n")):
+            if sent.startswith("S"):
+                src = convert_string_vocab(sent.split("\t")[1])
+            elif sent.startswith("H"):
+                score = sent.split("\t")[1]
+                hyp = convert_tag_vocab(sent.split("\t")[2])
+                if src not in m:
+                    print(
+                        "Preprocess err, {} not in gold standard translation".format(
+                            tgt
+                        )
+                    )
+                    continue
+                if src == " ":
+                    print("skip bad pair")
+                    continue
+                # check for duplicates
+                is_duplicate = False
+                for list_item in m[src]:
+                    if list_item[0] == hyp:
+                        # duplicate, do not add
+                        is_duplicate = True
+                        break
+                if not is_duplicate:
+                    m[src].append((hyp, score, 0))
+    return m, gold_available_set
 
 
-def get_rerank(m, prefix, output_mapping, forward, filter=True):
-    def string_to_vocab(s, use_mapping, filter):
-        if use_mapping:
-            if filter:
-                out = []
-                if s[0] == "<ur>" or s[0] == "<sd>":
-                    out.append(Vocab.lookup(s[0]))
-                else:
-                    out.append(Vocab.lookup(output_mapping.inverse[s[0]]))
-                for tok in s[1:]:
-                    if tok in "<ur>" or tok in "<sd>":
-                        continue
-                    out.append(Vocab.lookup(output_mapping.inverse[tok]))
-                return out
-            return [Vocab.lookup(output_mapping.inverse[_]) for _ in s]
-        else:
-            return [Vocab.lookup(_) for _ in s]
+def get_rerank(m, prefix):
+    def string_to_vocab(s):
+        return [Vocab.lookup(_) for _ in s]
 
     out = []
-    num_exist_file = 0
-    lang_id_mistake = 0
-    oracle_log_prob = 0
-    num_oracle_sent = 0
     for (k, v) in m.items():
         if len(v) < 20:
-            logger.info("skip bad pair")
+            print("skip bad pair")
             continue
         # retrieve score for all pairs
-        # if forward, src is other language and we need to use output mapping to convert it
-        src_vocab = string_to_vocab(k, forward, filter)
+        src_vocab = string_to_vocab(k)
         probs = []
         unaccepted_files_count = 0
         best_tgt = None
@@ -246,32 +262,23 @@ def get_rerank(m, prefix, output_mapping, forward, filter=True):
         for (idx, (tgt, _, isRef)) in enumerate(v):
             if isRef == 1:
                 oracle_tgt = tgt
-                oracle_lang_id = tgt[0]
-            tgt_vocab = string_to_vocab(tgt, not forward, filter)
-            hash_path = (
-                Utils.get_hashed_name(tgt_vocab, src_vocab, prefix)
-                if not forward
-                else Utils.get_hashed_name(src_vocab, tgt_vocab, prefix)
-            )
+            tgt_vocab = string_to_vocab(tgt)
+            hash_path = Utils.get_hashed_name(tgt_vocab, src_vocab, prefix)
             # hash_path = basename(hash_path)
             # filename = f'{prefix}/{hash_path}'
             filename = f"{hash_path}.npz.decoded"
             if exists(filename):
-                num_exist_file += 1
                 with open(filename, "r") as f:
                     prob = float(f.read().strip())
                     probs.append(prob)
                     if prob > best_prob:
                         best_tgt = tgt
-                    if isRef:
-                        oracle_log_prob += prob
-                        num_oracle_sent += 1
             else:
-                logger.info("hash file for {} does not exist".format(k))
+                # print("hash file for {} does not exist".format(k))
                 probs.append(-float("inf"))
                 unaccepted_files_count += 1
         if unaccepted_files_count == len(v):
-            logger.info("Encounter the situation that even ref is not serialized")
+            print("Encounter the situation that even ref is not serialized")
             continue
 
         order = [0 for _ in range(len(v))]
@@ -279,70 +286,135 @@ def get_rerank(m, prefix, output_mapping, forward, filter=True):
         assert len(probs) == len(v)
         sorted_index = np.argsort(np.array(probs))
         for idx, pos in enumerate(reversed(sorted_index)):
-            if idx == 0:
-                if v[pos][0][0] != oracle_lang_id:
-                    lang_id_mistake += 1
             if v[pos][2] == 1:
                 order[idx] = 1
-                # TODO: debug/interpretation purpose
                 if idx != 0:
-                    logger.info(
+                    print(
                         "src: {}\n predicted tag: {}\n best tag: {}\n".format(
                             k, best_tgt, oracle_tgt
                         )
                     )
                 break
         out.append(order)
-    logger.info(
-        f"Gold sentence log prob sum: {oracle_log_prob}, logprob avg: {oracle_log_prob / num_oracle_sent}"
-    )
-    logger.info(f"{num_exist_file} files that are found")
-    logger.info(f"{lang_id_mistake} lang id mistake by nfst")
     return out
+
+
+def update_I_tag(tags):
+    # TODO: need to update for the special BIO tag
+    prev_B_type = None
+    out = []
+    for tag in tags:
+        if tag.startswith("B-"):
+            prev_B_type = tag.split("-")[1]
+        elif tag == "I":
+            tag = "I-" + prev_B_type if prev_B_type is not None else "O"
+        elif tag != "O":
+            continue  # ignore the tag since we meet intent here
+        out.append(tag)
+    return out
+
+
+def compute_oracle_rerank(m, gold_set):
+    all_f1 = []
+    for k, v in m.items():
+        if len(v) < 20:
+            # skip bad pair
+            continue
+        elif k in gold_set:
+            # fairseq has the gold standard output as its hypothesis, the oracle should always find that as upperbound
+            gold_tag = None
+            for (tgt, _, isRef) in v:
+                if isRef == 1:
+                    gold_tag = tgt
+                    break
+            gold = update_I_tag(gold_tag)
+            all_f1.append((gold, gold))
+        else:
+            max_f1 = -float("inf")
+            pair = None
+            # find the gold sample
+            gold_tag = None
+            for (tgt, _, isRef) in v:
+                if isRef == 1:
+                    gold_tag = tgt
+                    break
+
+            for (tgt, _, isRef) in v:
+                if isRef == 1:
+                    continue
+                gold = update_I_tag(gold_tag)
+                hyp = update_I_tag(tgt)
+                if len(gold) > len(hyp):
+                    gold = gold[: len(hyp)]
+                elif len(gold) < len(hyp):
+                    hyp = hyp[: len(gold)]
+                score = f1_score([gold], [hyp])
+                if score > max_f1:
+                    max_f1 = score
+                    pair = (gold, hyp)
+            all_f1.append(pair)
+    y_true = []
+    y_pred = []
+    for p1, p2 in all_f1:
+        y_true.append(p1)
+        y_pred.append(p2)
+    return f1_score(y_true, y_pred)
 
 
 class Rerank:
     def __init__(self, args) -> None:
         self.cfg = args.preprocess
         self.limit = int(args.limit)
-        self.sub_size = args.sub_size
         self.task = args.task
-        self.language = args.language
+        self.serialize_prefix = args.serialize_prefix
+        self.prefix = args.prefix
         self.control_symbols = list(self.cfg.control_symbols.split(","))
         self.output_mapping = Utils.load_mapping(args.output_mapping)
-        self.input_mapping = args.input_mapping
+        self.tag_mapping = Utils.load_mapping(args.tag_mapping)
+        self.agnostic = args.agnostic
+        self.latent = args.latent
+        self.after = args.after
         Vocab.load(args.vocab)
         # important paths used
         self.serialize_prefix = args.serialize_prefix
         self.prefix = args.prefix
         self.npz_path = args.serialize_fst_path
         self.decode_path = args.decode_prefix
+
         self.forward = False  # true if other -> eng
-        self.k = 20  # FIXME: add this to config
+        self.k = 20  # FIXME: add this   to config
         # add test split after model selection is done
-        from src.decode.tr_serialize import find_best_ckpt
+        from src.decode.snips_serialize import find_best_ckpt
 
         for split in ["valid"]:
             (fairseq_ref, fairseq_hyp) = find_best_ckpt(args.fairseq_ckpt, split)
             logger.info(f"Using fairseq file: {fairseq_ref}")
-            fairseq_result_map = get_prob_for_all_sentences(fairseq_ref, fairseq_hyp)
-            self.compute_and_print_results(fairseq_result_map, split)
+            fairseq_result_map, gold_available_set = get_prob_for_all_sentences(
+                fairseq_ref, fairseq_hyp, self.tag_mapping
+            )
+            self.compute_results(fairseq_result_map, gold_available_set, split)
 
-    def compute_and_print_results(self, result_map, split):
+    def compute_results(self, result_map, gold_set, split):
+        # compute oracle ranker f1 as the upperbound
+        oracle_reranker_f1 = compute_oracle_rerank(result_map, gold_set)
+        # generate baseline from fairseq
         baseline_outcome = get_baseline(result_map, self.k)
-        filter = "filter" in self.task
-        reranked_outcome = get_rerank(
-            result_map,
-            f"{self.decode_path}/{split}",
-            self.output_mapping,
-            self.forward,
-            filter,
-        )
+        baseline_outcome_no_oracle = ner_baseline(result_map)
 
-        logger.info(f"MRR baseline: {mean_reciprocal_rank(baseline_outcome)}")
-        logger.info(f"MRR reranked: {mean_reciprocal_rank(reranked_outcome)}")
-        logger.info(f"TOP-1 baseline: {top1_rank(baseline_outcome)}")
-        logger.info(f"TOP-1 reranked: {top1_rank(reranked_outcome)}")
+        # retrieve result by FST and generate rerank array
+        reranked_outcome = get_rerank(result_map, f"{self.decode_path}/{split}")
+        reranked_outcome_no_oracle = ner_rerank(
+            result_map, f"{self.decode_path}/{split}", gold_set
+        )
+        print(f"MRR baseline: {mean_reciprocal_rank(baseline_outcome)}")
+        print(f"MRR rerank: {mean_reciprocal_rank(reranked_outcome)}")
+        print()
+        print(f"P@1 baseline: {top1_rank(baseline_outcome)}")
+        print(f"P@1 rerank: {top1_rank(reranked_outcome)}")
+        print()
+        print(f"F1 baseline: {f1(baseline_outcome_no_oracle)}")
+        print(f"F1 rerank: {f1(reranked_outcome_no_oracle)}")
+        print(f"F1 Oracle (upperbound): {oracle_reranker_f1}")
 
 
 def mean_reciprocal_rank(rs):
@@ -371,3 +443,24 @@ def mean_reciprocal_rank(rs):
 def top1_rank(rs):
     rs = (np.asarray(r).nonzero()[0] for r in rs)
     return np.mean([1.0 if r.size and r[0] == 0 else 0.0 for r in rs])
+
+
+def f1(input):
+    """compute f1 score given an array of (gold, hyp) pair"""
+
+    y_true = []
+    y_pred = []
+    for (gold, hyp) in input:
+        # hacky way to make the import package compute correct f1 score
+        gold = update_I_tag(gold)
+        hyp = update_I_tag(hyp)
+        if len(gold) > len(hyp):
+            gold = gold[: len(hyp)]
+        elif len(gold) < len(hyp):
+            hyp = hyp[: len(gold)]
+        y_true.append(gold)
+        y_pred.append(hyp)
+    score = f1_score(y_true, y_pred)
+    # score = classification_report(y_true, y_pred)
+    # print(score)
+    return score

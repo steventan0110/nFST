@@ -115,9 +115,10 @@ class SerializeTR(Preprocess):
                 elif l.startswith("H-"):
                     hyp = self.process_line(l, "H")
                     hypotheses.append(hyp)
-                    self.add_hyp_to_bucket(
-                        hypotheses, counter, buckets, src, path, split
-                    )
+            if hypotheses:
+                self.add_hyp_to_bucket(
+                    hypotheses, counter, buckets, src, path, split
+                )
 
         with mp.Pool(self.cfg.cpu_count) as mpp:
             if len(buckets) == 1:

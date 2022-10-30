@@ -37,6 +37,7 @@ class TR:
         self.make_vocab(vocab_path)
         self.fst = self._make_fst()
         self.fst_sub = self._make_fst(add_sub=True)
+        self.fst_lm = self._make_lm()
         # self.compose_fst = self._make_compose_fst()
         # self.compose_reg_fst = self._make_compose_reg_fst()
         # self.fst_xy = self.make_fst_xy()
@@ -47,6 +48,8 @@ class TR:
             return self.fst
         elif machine_type == "sub":
             return self.fst_sub
+        elif machine_type == "plain_lm":
+            return self.fst_lm
 
     @lru_cache(maxsize=None)
     def input_symbols(self):
@@ -384,6 +387,43 @@ class TR:
                         weight=RefWeight(OwnAST("v", label, None)),
                     )
 
+        return fst
+
+    def _make_lm(self):
+        output_mark = Vocab.lookup("output-mark")
+        fst = FST(semiring_class=RefWeight)
+        init_state = fst.add_state()
+        fst.set_initial_state(init_state)
+        fst.set_final_weight(init_state)
+        for y_values in self.m.keys():
+            # insertion case
+            label = tuple([output_mark, Vocab.lookup(y_values)])
+            fst.add_arc(
+                init_state,
+                init_state,
+                input_label=0,
+                output_label=Vocab.lookup(y_values),
+                weight=RefWeight(OwnAST("v", label, None)),
+            )
+        # add special label for filtered dataset
+        fst.add_arc(
+            init_state,
+            init_state,
+            input_label=0,
+            output_label=Vocab.lookup("<ur>"),
+            weight=RefWeight(
+                OwnAST("v", tuple([output_mark, Vocab.lookup("<ur>")]), None)
+            ),
+        )
+        fst.add_arc(
+            init_state,
+            init_state,
+            input_label=0,
+            output_label=Vocab.lookup("<sd>"),
+            weight=RefWeight(
+                OwnAST("v", tuple([output_mark, Vocab.lookup("<sd>")]), None)
+            ),
+        )
         return fst
 
     @lru_cache(maxsize=None)

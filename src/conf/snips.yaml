@@ -2,7 +2,7 @@
 defaults:
   - _self_
   - preprocess: standard
-  - train: transformer_6_8
+  - train: t_4_4_r_snips.yaml
 
 limit: 10000000
 task: "snips"

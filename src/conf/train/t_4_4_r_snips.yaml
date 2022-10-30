@@ -1,0 +1,49 @@
+# TODO: clean up the unused params
+max_length: 750
+batch_size: 4
+estimator: iwae
+proposal_dist: ps
+num_layers: 4
+num_heads: 4
+tilde_p_num_layers: 2
+warmup_steps: 4000
+tilde_p_hid_dim: 256
+hid_dim: 512
+k: 16
+dropout: 0.3
+grad_clip: 5.
+learning_rate: 5e-5
+tilde_p_lr: 1e-3
+label_smoothing: 0.1
+
+#TILDE_P_CHOICE="wfst-nfst-composition"
+tilde_p_choice: "wfst-nfst-composition-dummy"
+tilde_p_type: "LSTM"
+p_type: "transformer"
+prob_definition: joint
+insert_threshold: 0
+insert_penalty: 5.0
+length_threshold: 290
+length_penalty: 1.0
+locally_normalized: True
+
+# default args:
+proposal_tuning_k: 32
+tune_global: False
+tune_denom: False
+tune_num: True
+tune_p: True
+tune_q: True
+
+force_type: None
+two_level_marks: False
+tied_mark_embeddings: False
+tied_proposal_embeddings: False
+
+exp_window_coefficient: 0.01 
+mask: False
+nro: False
+use_pretrain_proposal: False
+train_config: p-type-${.p_type}/tilde-p-type-${.tilde_p_type}/lr-${.learning_rate}/tilde-p-lr-${.tilde_p_lr}/hid-${.hid_dim}/layers-${.num_layers}/tilde-p-hid-${.tilde_p_hid_dim}/tilde-p-layers-${.tilde_p_num_layers}/drop-${.dropout}/clip-${.grad_clip}/bsz-${.batch_size}/max-seq-len-${.max_length}/length-threshold-${.length_threshold}/estimator-${.estimator}/proposal-${.proposal_dist}/nheads-${.num_heads}/k-${.k}/tune-q-${.tune_q}/tied-mark-embeddings-${.tied_mark_embeddings}/label-smoothing-${.label_smoothing}/two-level-marks-${.two_level_marks}/tilde-p-choice-${.tilde_p_choice}
+
+

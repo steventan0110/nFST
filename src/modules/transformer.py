@@ -3,6 +3,49 @@ from torch import nn
 from torch.nn.init import xavier_normal_
 from torch.functional import F
 import math
+from transformers import GPT2LMHeadModel, GPT2Config
+
+
+class GPT2Wrapper(nn.Module):
+    def __init__(self, args) -> None:
+        super().__init__()
+        self.vocab_size = args.vocab_size
+        self.bos = args.bos
+        self.eos = args.eos
+        self.pad = args.pad
+        self.max_length = args.max_length
+        self.num_layers = args.tilde_p_num_layers
+        self.num_heads = args.num_heads
+        self.config = GPT2Config(
+            args.vocab_size,
+            n_head=args.num_heads,
+            n_layer=args.tilde_p_num_layers,
+            bos_token_id=self.bos,
+            eos_token_id=self.eos,
+            n_positions=args.max_length + 1,
+            n_embd=args.tilde_p_hid_dim,
+        )
+        self.model = GPT2LMHeadModel(self.config)
+
+    def forward(self, x):
+        """
+        x: input tokens of (bz, seq_len)
+        """
+        # shift by 1 on x
+        bz, seq_len = x.shape
+        pad_token = x.new_full((bz, 1), self.pad)
+        gold_x = torch.cat((x, pad_token), dim=1)
+        bos_token = x.new_full((bz, 1), self.bos)
+        shift_x_as_input = torch.cat((bos_token, x), dim=1)
+
+        logits = self.model(shift_x_as_input).logits  # bz x seq x vocab_size
+        logits[:, :, self.pad] = -float(1e8)  # -infinity for pad token
+        logits = F.log_softmax(logits, dim=2)
+
+        log_prob = torch.gather(logits, 2, gold_x.unsqueeze(2)).squeeze(2)
+        pad_mask = (~(gold_x == self.pad)).long()  # bz x seq
+        log_prob = log_prob * pad_mask
+        return torch.sum(log_prob, dim=1)
 
 
 class PositionalEncoding(nn.Module):
@@ -22,11 +65,11 @@ class PositionalEncoding(nn.Module):
         )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
+        pe = pe.unsqueeze(0)
         self.register_buffer("pe", pe)
 
     def forward(self, x):
-        x = x + self.pe[: x.size(0), :]
+        x = x + self.pe[:, : x.size(1)]
         return self.dropout(x)
 
 
@@ -138,7 +181,15 @@ class TransformerLM(nn.Module):
     """
 
     def __init__(
-        self, num_classes: int, max_output_length: int, dim: int, bos, pad, eos
+        self,
+        num_classes: int,
+        max_output_length: int,
+        dim: int,
+        bos,
+        pad,
+        eos,
+        num_layers,
+        num_heads,
     ):
         super().__init__()
 
@@ -148,14 +199,16 @@ class TransformerLM(nn.Module):
         self.bos = bos
         self.eos = eos
         self.max_output_length = max_output_length
-        nhead = 8
-        num_layers = 6
+        self.step = 0
 
         # Encoder part
         self.embedding = nn.Embedding(num_classes, dim)
         self.pos_encoder = PositionalEncoding(d_model=self.dim)
         self.transformer_decoder = nn.Sequential(
-            *[DecoderBlock(dim, nhead, max_output_length) for _ in range(num_layers)]
+            *[
+                DecoderBlock(dim, num_heads, max_output_length)
+                for _ in range(num_layers)
+            ]
         )
         self.ln = nn.LayerNorm(self.dim)
         self.fc = nn.Linear(self.dim, num_classes)
@@ -184,6 +237,13 @@ class TransformerLM(nn.Module):
         x = F.log_softmax(x, dim=2)
         log_prob = torch.gather(x, 2, input.unsqueeze(2)).squeeze(2)  # bz x seq
         log_prob = log_prob * pad_mask  # apply mask to remove pad logits
+        # if self.step % 100 == 0:
+        #     print("print out some transformer output")
+        #     print(x[0, 5, :])
+        #     print(torch.max(x[0, 5, :]))
+        #     print(log_prob[0, 5])
+
+        self.step += 1
         # apply mask
         out = torch.sum(log_prob, dim=1)  # bz
         return out

@@ -67,7 +67,7 @@ class Decoder:
     def decode(self, path, split):
         Path(f"{self.decode_prefix}/{split}").mkdir(parents=True, exist_ok=True)
         filenames = glob(f"{path}/*.npz")
-        visualize = True
+        visualize = False
         for fname in tqdm(filenames, disable=True):
             bfname = basename(fname)
             decoded_fname = f"{self.decode_prefix}/{split}/{bfname}.decoded"

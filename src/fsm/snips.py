@@ -150,11 +150,14 @@ class Snips:
         self,
         mapping_path,
         vocab_path,
-        nro_path,
         control_symbols,
         bos,
         eos,
         pad,
+        agnostic,
+        latent,
+        after,
+        nro_path=None,
         use_subtype: bool = False,
         alignment: InputMachineAlignment = InputMachineAlignment.ALIGNED,
         somewhat_aligned_degree: int = 2,
@@ -171,6 +174,10 @@ class Snips:
         print("use old machine: ", use_old)
         print("use subtype: ", self.use_subtype)
         print("Alignment type: ", alignment)
+        self.agnostic = agnostic
+        self.latent = latent
+        self.after = after
+        print(f"Machine Type: Agnostic:{agnostic} Latent: {latent} After:{after}")
         self.control_symbols = control_symbols
         self.bos = bos
         self.eos = eos
@@ -189,6 +196,30 @@ class Snips:
         self.nagnostic_latent_nafter_fst = self.make_nagnostic_latent_nafter_fst()
         self.nagnostic_nlatent_after_fst = self.make_nagnostic_nlatent_after_fst()
         self.nagnostic_nlatent_nafter_fst = self.make_nagnostic_nlatent_nafter_fst()
+
+    def get_machine(self):
+        if self.agnostic:
+            if self.latent:
+                if self.after:
+                    return self.agnostic_latent_after_fst
+                else:
+                    return self.agnostic_latent_nafter_fst
+            else:
+                if self.after:
+                    return self.agnostic_nlatent_after_fst
+                else:
+                    return self.agnostic_nlatent_nafter_fst
+        else:
+            if self.latent:
+                if self.after:
+                    return self.nagnostic_latent_after_fst
+                else:
+                    return self.nagnostic_latent_nafter_fst
+            else:
+                if self.after:
+                    return self.nagnostic_nlatent_after_fst
+                else:
+                    return self.nagnostic_nlatent_nafter_fst
 
     def make_vocab(self, vocab_path):
         if exists(vocab_path):
@@ -209,7 +240,6 @@ class Snips:
             for v in self.bio_marks.values():
                 Vocab.add_word(v)
             Vocab.add_word("closure-mark")  # hard code
-
             Vocab.add_word(self.tag_subtype)
             Vocab.add_word("B")
             Vocab.add_word("I")

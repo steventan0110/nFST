@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import torch
 import pickle
 from torch.nn.modules import Embedding
-from src.modules.transformer import TransformerLM
+from src.modules.transformer import TransformerLM, GPT2Wrapper
 from src.util.preprocess_util import Vocab, Utils
 
 # from src.modules import scorers, sampler, nre_scorers, transducers, queries
@@ -16,9 +16,12 @@ from src.modules.scorers import (
 from src.modules.estimatros import Estimators
 from src.modules.samplers import Sampler
 from src.modules.scorers import FSAGRUScorer, FSAMaskScorer
-from src.modules.queries import QueryPiGivenX, QueryPiGivenXAndY
-from src.modules.proposal import Proposal
+from src.modules.transformer_scorer import GPTScorer, TransformerSampler
+from src.modules.queries import QueryPiGivenXAndY, QueryPiGivenXAndYTransformer
+from transformers import AdamW
+
 import logging
+
 
 logger = logging.getLogger("LightningTrain")
 
@@ -28,15 +31,25 @@ class ZTable:
     exit_states = set()
 
 
+def param_sum(model):
+    p_sum = 0
+    for p in model.parameters():
+        p_sum += p.sum().item()
+    return p_sum
+
+
 class JointProb(pl.LightningModule):
     def __init__(self, args):
         super(JointProb, self).__init__()
         self.proposal_tuning_k = args.proposal_tuning_k
         self.estimator = args.estimator
         self.locally_normalized = args.locally_normalized
+        self.warmup_steps = args.warmup_steps
         assert self.locally_normalized  # only work on this version
 
         self.tilde_p_choice = args.tilde_p_choice
+        self.tilde_p_type = args.tilde_p_type
+        self.p_type = args.p_type
         self.proposal_distribution = args.proposal_dist
 
         self.tune_p = args.tune_p
@@ -47,13 +60,16 @@ class JointProb(pl.LightningModule):
 
         self.tilde_p_type = args.tilde_p_type
         self.learning_rate = args.learning_rate
+        self.tilde_p_lr = args.tilde_p_lr
 
         self.nro = args.nro
+        self.vocab_size = args.vocab_size
         self.embeddings = Embedding(
             args.vocab_size,
             args.tilde_p_hid_dim,
             args.pad,
         )
+        self.step = 0  # track number of updataes for printout
 
         if (
             args.tilde_p_choice == "wfst-nfst-composition"
@@ -76,12 +92,96 @@ class JointProb(pl.LightningModule):
 
         self.tilde_p = nre
         self.pad = args.pad
-        self.proposal = Proposal(args)
+        proposal_embedding = Embedding(
+            args.vocab_size,
+            args.hid_dim,
+            args.pad,
+        )
 
-        self.proposal_modules = self.proposal.get_proposal_module()
-        logger.info(self.proposal_modules)
+        if args.p_type == "transformer":
+            logger.info("Using transformer for proposal")
+            self.io_queries = QueryPiGivenXAndYTransformer(
+                args.hid_dim,
+                num_layers=args.num_layers,
+                state_hid_dim=args.hid_dim,
+                num_heads=args.num_heads,
+                vocab_size=args.vocab_size,
+                pad=args.pad,
+                bos=args.bos,
+                eos=args.eos,
+                drop=args.dropout,
+                max_length=args.max_length,
+            )
+            # TODO update scorer and sampler with transformer as well
+            self.num_proposal_dist = FSAGRUScorer(
+                args.hid_dim,
+                args.vocab_size,
+                bos=args.bos,
+                eos=args.eos,
+                pad=args.pad,
+                insert_penalty=args.insert_penalty,
+                insert_threshold=args.insert_threshold,
+                length_threshold=args.length_threshold,
+                length_penalty=args.length_penalty,
+                max_length=args.max_length,
+                embeddings=proposal_embedding,
+                query=self.io_queries,
+                tied_embeddings=args.tied_proposal_embeddings,
+            )
+            self.proposal_modules = torch.nn.ModuleList(
+                [
+                    self.num_proposal_dist,
+                    self.io_queries,
+                ]
+            )
+            # self.num_sampler = TransformerSampler(self.num_proposal_dist)
+            self.num_sampler = Sampler(self.num_proposal_dist)
+        else:
+            self.io_queries = QueryPiGivenXAndY(
+                args.hid_dim,
+                num_layers=args.num_layers,
+                state_hid_dim=args.hid_dim,
+                embedder=proposal_embedding,
+                vocab_size=args.vocab_size,
+                pad=args.pad,
+                bos=args.bos,
+                eos=args.eos,
+                drop=args.dropout,
+            )
+            self.num_proposal_dist = FSAGRUScorer(
+                args.hid_dim,
+                args.vocab_size,
+                bos=args.bos,
+                eos=args.eos,
+                pad=args.pad,
+                insert_penalty=args.insert_penalty,
+                insert_threshold=args.insert_threshold,
+                length_threshold=args.length_threshold,
+                length_penalty=args.length_penalty,
+                max_length=args.max_length,
+                embeddings=proposal_embedding,
+                query=self.io_queries,
+                tied_embeddings=args.tied_proposal_embeddings,
+            )
+            self.proposal_modules = torch.nn.ModuleList(
+                [
+                    self.num_proposal_dist,
+                    self.io_queries,
+                ]
+            )
+            self.num_sampler = Sampler(self.num_proposal_dist)
 
-        self.num_sampler = Sampler(self.proposal.get_num_proposal_dist())
+        # check if pretrain ckpt changed the params
+        # print("before loading ckpt")
+        # print(param_sum(self.num_sampler.model))
+        # print(param_sum(self.proposal_modules))
+        if args.use_pretrain_proposal:
+            num_proposal_dist, proposal_modules = self.load_proposal(args)
+            self.num_sampler = Sampler(num_proposal_dist)
+            self.proposal_modules = proposal_modules
+            # print("after loading ckpt")
+            # print(param_sum(self.num_sampler.model))
+            # print(param_sum(self.proposal_modules))
 
         self.k = args.k
         if args.prob_definition == "joint":
@@ -116,6 +216,20 @@ class JointProb(pl.LightningModule):
         # if hasattr(args, "do_not_finetune_plang"):
         #     self._do_not_finetune_plang = args.do_not_finetune_plang
         # self.set_plang()
+
+    def load_proposal(self, args):
+        hard_code_path = "/export/c06/wtan12/nfst/tr-filter-sub-20000/outputs/model/ur/hid-256/layers-2/tilde-p-hid-256/tilde-p-layers-2/drop-0.3/clip-5.0/bsz-32/max-seq-len-300/length-threshold-290/estimator-iwae/proposal-ps/tilde-p-type-LSTM/k-16/tune-q-True/learning-rate-0.001/tied-mark-embeddings-False/label-smoothing-0.1/two-level-marks-False/tilde-p-choice-wfst-nfst-composition-dummy/lightning_logs/version_1/checkpoints/lstm.ckpt"
+        from copy import deepcopy
+
+        new_args = deepcopy(args)
+        new_args["tilde_p_num_layers"] = 2
+        new_args["tilde_p_type"] = "LSTM"
+        new_args["use_pretrain_proposal"] = False
+
+        pretrain_model = JointProb.load_from_checkpoint(
+            hard_code_path, "cpu", args=new_args
+        )
+        return (pretrain_model.num_proposal_dist, pretrain_model.proposal_modules)
 
     def set_plang(self):
         if (
@@ -185,73 +299,7 @@ class JointProb(pl.LightningModule):
                 two_level_marks=args.two_level_marks,
             )
         if args.tilde_p_type == "transformer":
-            # x = torch.LongTensor(
-            #     [
-            #         [
-            #             6,
-            #             23,
-            #             6,
-            #             33,
-            #             7,
-            #             174,
-            #             6,
-            #             20,
-            #             6,
-            #             20,
-            #             6,
-            #             21,
-            #             8,
-            #             6,
-            #             16,
-            #             7,
-            #             72,
-            #             7,
-            #             46,
-            #             7,
-            #             50,
-            #             6,
-            #             29,
-            #             7,
-            #             61,
-            #             8,
-            #             6,
-            #             16,
-            #             7,
-            #             57,
-            #             8,
-            #             6,
-            #             23,
-            #             7,
-            #             51,
-            #             7,
-            #             56,
-            #             2,
-            #             3,
-            #             3,
-            #             3,
-            #             3,
-            #         ]
-            #     ]
-            # )
-            # mdl = TransformerLM(
-            #     num_classes=args.vocab_size,
-            #     max_output_length=args.max_length,
-            #     dim=args.hid_dim,
-            #     bos=args.bos,
-            #     pad=args.pad,
-            #     eos=args.eos,
-            # )
-            # output = mdl(x)
-            # print(output)
-            # raise RuntimeError
-            return TransformerLM(
-                num_classes=args.vocab_size,
-                max_output_length=args.max_length,
-                dim=args.hid_dim,
-                bos=args.bos,
-                pad=args.pad,
-                eos=args.eos,
-            )
+            return GPT2Wrapper(args)
 
     def tune_proposal(
         self,
@@ -282,6 +330,7 @@ class JointProb(pl.LightningModule):
             .reshape(ps.shape[0] * self.proposal_tuning_k, -1)
         )
         ps_expanded_mask: torch.Tensor = self.get_mask(ps_expanded)
+
         log_q_num, num_samples = self.num_sampler.sample(
             batch_size=batch_size * self.proposal_tuning_k,
             query_args={
@@ -299,7 +348,11 @@ class JointProb(pl.LightningModule):
             tilde_p_over_q = (tilde_p - log_q_num).reshape(
                 batch_size, self.proposal_tuning_k
             )
+
             weights = torch.softmax(tilde_p_over_q, dim=1).detach()
+            # # FIXME: use a threshold to prevent transformer from updating too early
+            # if torch.mean(tilde_p_over_q) > 70:
+            #     weights = weights.new_zeros(weights.shape)
         log_q_num: torch.Tensor = log_q_num.reshape(batch_size, self.proposal_tuning_k)
 
         to_return = {
@@ -311,6 +364,9 @@ class JointProb(pl.LightningModule):
             "denom_loss_rf": None,
         }
         if tune_num:
+            # print("debug tune q:")
+            # print(log_q_num)
+            # print(weights)
             to_return["num_loss"] = -(weights * log_q_num).sum(dim=1).mean()
 
         return to_return
@@ -338,8 +394,14 @@ class JointProb(pl.LightningModule):
             query_args["mask_2"] = y_expanded_mask
         if biased:
             log_marginalized, log_q, samples, log_w = Estimators.iwae(
-                proposal, self.tilde_p, emission.shape[0], k_prime, query_args
+                proposal,
+                self.tilde_p,
+                emission.shape[0],
+                k_prime,
+                self.step,
+                query_args,
             )
+            self.step += 1
 
         return log_marginalized, log_q, samples, log_w
 
@@ -392,12 +454,6 @@ class JointProb(pl.LightningModule):
         return (to_mask != self.num_sampler.model.__pad__).to(torch.get_default_dtype())
 
     def training_step(self, batch, batch_idx, optimizer_idx=0, **kwargs):
-        def param_sum(model):
-            p_sum = 0
-            for p in model.parameters():
-                p_sum += p.sum().item()
-            return p_sum
-
         self.validation_z_set = False
         first_six = batch[:6]
         if self.tune_p and self.tune_q:
@@ -480,29 +536,68 @@ class JointProb(pl.LightningModule):
     def configure_optimizers(self):
         from torch.optim import Adam
         from torch.optim.lr_scheduler import ReduceLROnPlateau
+        from transformers.optimization import get_polynomial_decay_schedule_with_warmup
 
-        model_optimizer = Adam(
-            self.tilde_p.parameters(), lr=self.learning_rate if self.tune_p else 0.0
+        model_optimizer = AdamW(
+            self.tilde_p.parameters(), lr=self.tilde_p_lr if self.tune_p else 0.0
         )
         proposal_optimizer = Adam(
             self.proposal_modules.parameters(),
             lr=self.learning_rate if self.tune_q else 0.0,
         )
-
-        model_optim_config = {
-            "optimizer": model_optimizer,
-            "scheduler": ReduceLROnPlateau(model_optimizer, mode="min", verbose=True),
-            "monitor": "val_loss",
-        }
-        proposal_optim_config = {
-            "optimizer": proposal_optimizer,
-            "scheduler": ReduceLROnPlateau(
-                proposal_optimizer,
-                mode="min",
-                verbose=True,
-            ),
-            "monitor": "val_q_num_loss",
-        }
+        if self.tilde_p_type != "transformer":
+            logger.info("Use ReduceLR scheduler for scorer")
+            # using lstm
+            model_optim_config = {
+                "optimizer": model_optimizer,
+                "scheduler": ReduceLROnPlateau(
+                    model_optimizer, mode="min", verbose=True
+                ),
+                "monitor": "val_loss",
+            }
+        else:
+            logger.info("Use warmup scheduler for scorer")
+            model_optim_config = {
+                "optimizer": model_optimizer,
+                "lr_scheduler": {
+                    "scheduler": get_polynomial_decay_schedule_with_warmup(
+                        model_optimizer,
+                        num_warmup_steps=self.warmup_steps,
+                        num_training_steps=40000,
+                        lr_end=1e-6,
+                    ),
+                    "interval": "step",
+                    "frequency": 1,
+                    "monitor": "val_loss",
+                },
+            }
+        if self.p_type != "transformer":
+            logger.info("Use ReduceLR scheduler for proposal")
+            proposal_optim_config = {
+                "optimizer": proposal_optimizer,
+                "scheduler": ReduceLROnPlateau(
+                    proposal_optimizer,
+                    mode="min",
+                    verbose=True,
+                ),
+                "monitor": "val_q_num_loss",
+            }
+        else:
+            logger.info("Use warmup scheduler for proposal")
+            proposal_optim_config = {
+                "optimizer": proposal_optimizer,
+                "lr_scheduler": {
+                    "scheduler": get_polynomial_decay_schedule_with_warmup(
+                        proposal_optimizer,
+                        num_warmup_steps=self.warmup_steps,
+                        num_training_steps=40000,
+                        lr_end=1e-6,
+                    ),
+                    "interval": "step",
+                    "frequency": 1,
+                    "monitor": "val_q_num_loss",
+                },
+            }
         # return proposal_optim_config
 
         if self.tune_p and self.tune_q:
