@@ -1,12 +1,26 @@
+#!/bin/bash
+#SBATCH -A jeisner1
+#SBATCH --partition=defq
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=10
+#SBATCH --mem-per-cpu=4GB
+#SBATCH --output=/home/wtan12/nFST/output/slurm/tr20k_preprocess.out
+#SBATCH --time=72:00:00
+
+
+module load anaconda
+conda activate nfst
+
 ROOT="/home/wtan12/nFST/src"
 export PYTHONPATH="/home/wtan12/nFST"
 lang=ur
 python $ROOT/main.py \
-    output_dir="/export/c06/wtan12/nfst" \
-    input_mapping="/home/kitsing/scratch/data/cmudict/fairseq-scripts/data-bin/cmudict/dict.cmudict.eng.txt" \
-    output_mapping="/home/wtan12/seq-samplers/tr/nfst/${lang}.graphs.sym" \
+    output_dir="/scratch4/jeisner1/nfst" \
+    input_mapping="/home/wtan12/nFST/src/preprocess/tr/dict.cmudict.eng.txt" \
+    output_mapping="/home/wtan12/nFST/src/preprocess/tr/${lang}.graphs.sym" \
     language=$lang \
-    fairseq_ckpt="/export/c01/kitsing/dakshina-small-fairseq/checkpoints/${lang}" \
+    fairseq_ckpt="/data/jeisner1/nfst/fairseq_ckpt/tr/checkpoints/${lang}" \
     gpu=0 \
     do_preprocess=True \
     do_train=False \

@@ -148,9 +148,6 @@ class Sampler:
                 == self.model.transition_k.shape[0]
                 == self.model.emission_k.shape[0]
             )
-        # print(batch_size)
-        # print(to_evaluate)
-        # print(query_args)
         results = self.stateful_sample(
             batch_size=batch_size,
             to_evaluate=to_evaluate,
@@ -196,6 +193,11 @@ class Sampler:
         temperature: float = 1.0,
         query_args: Optional[Dict] = None,
     ):
+        if self.model.use_beta:
+            # use DAG messsage passing to compute beta prob for each state
+            beta = self.model.compute_beta()
+        else:
+            beta = None
 
         model: LeftToRightScorer = self.model
         if model.has_query():
@@ -237,12 +239,13 @@ class Sampler:
         intermediate_hx = []
 
         hard_cut = True
+        # tmp = []
         for timestep in range(
             model.max_length + 1
         ):  # + 1 for the additional padding at the end
 
             new_hx, masked_out_invalid, updated_metadata = model.left_to_right_score(
-                left_h=hx, left_inp=inp, metadata=metadata
+                left_h=hx, left_inp=inp, metadata=metadata, beta=beta
             )
 
             # build distribution over next symbols
@@ -251,16 +254,17 @@ class Sampler:
             # assert torch.all(torch.logsumexp(masked_out_invalid, dim=-1) > float('-inf'))
 
             dist_over_next = Categorical(logits=masked_out_invalid)
-
             try:
                 if evaluate_only:
                     sampled_next_symbol = to_evaluate_padded[:, timestep]
                 else:
                     sampled_next_symbol = dist_over_next.sample()
+
             except Exception as e:
                 print(f"{e}\t{timestep}")
                 print(prefixes)
                 raise e
+            # tmp.append(sampled_next_symbol[0].item())
             metadata = model.metadata_callback(
                 new_hx, sampled_next_symbol, updated_metadata
             )

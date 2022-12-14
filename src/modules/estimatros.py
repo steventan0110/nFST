@@ -1,4 +1,3 @@
-from allennlp.data.vocabulary import Vocabulary
 from typing import Optional, Dict
 import torch
 import numpy as np

@@ -6,23 +6,25 @@ proposal_dist: ps
 num_layers: 2
 tilde_p_num_layers: 2
 tilde_p_hid_dim: 256
+num_heads: 0
 hid_dim: 256
 k: 16
 dropout: 0.3
 grad_clip: 5.
 learning_rate: 1e-3
+tilde_p_lr: 1e-3
 label_smoothing: 0.1
 warmup_steps: 0
 #TILDE_P_CHOICE="wfst-nfst-composition"
 tilde_p_choice: "wfst-nfst-composition-dummy"
 tilde_p_type: "LSTM"
+p_type: "LSTM"
 prob_definition: joint
 insert_threshold: 0
 insert_penalty: 5.0
 length_threshold: 600
 length_penalty: 1.0
 locally_normalized: True
-ser_weight: 1e-2
 
 # default args:
 proposal_tuning_k: 32
@@ -41,6 +43,7 @@ exp_window_coefficient: 0.01
 mask: False
 nro: False
 use_pretrain_proposal: False
-train_config: hid-${.hid_dim}/layers-${.num_layers}/tilde-p-hid-${.tilde_p_hid_dim}/tilde-p-layers-${.tilde_p_num_layers}/drop-${.dropout}/clip-${.grad_clip}/bsz-${.batch_size}/max-seq-len-${.max_length}/length-threshold-${.length_threshold}/estimator-${.estimator}/proposal-${.proposal_dist}/tilde-p-type-${.tilde_p_type}/k-${.k}/tune-q-${.tune_q}/learning-rate-${.learning_rate}/tied-mark-embeddings-${.tied_mark_embeddings}/label-smoothing-${.label_smoothing}/two-level-marks-${.two_level_marks}/tilde-p-choice-${.tilde_p_choice}
+train_config: p-type-${.p_type}/tilde-p-type-${.tilde_p_type}/lr-${.learning_rate}/tilde-p-lr-${.tilde_p_lr}/hid-${.hid_dim}/layers-${.num_layers}/tilde-p-hid-${.tilde_p_hid_dim}/tilde-p-layers-${.tilde_p_num_layers}/drop-${.dropout}/clip-${.grad_clip}/bsz-${.batch_size}/max-seq-len-${.max_length}/length-threshold-${.length_threshold}/estimator-${.estimator}/proposal-${.proposal_dist}/nheads-${.num_heads}/k-${.k}/tune-q-${.tune_q}/tied-mark-embeddings-${.tied_mark_embeddings}/label-smoothing-${.label_smoothing}/two-level-marks-${.two_level_marks}/tilde-p-choice-${.tilde_p_choice}
+
 
 

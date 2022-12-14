@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 from src.util.preprocess_util import Vocab, Utils
 from os.path import basename, exists
 from scipy.special import logsumexp
@@ -382,8 +381,7 @@ class Rerank:
         self.decode_path = args.decode_prefix
 
         self.forward = False  # true if other -> eng
-        self.k = 20  # FIXME: add this   to config
-        # add test split after model selection is done
+        self.k = 20
         from src.decode.snips_serialize import find_best_ckpt
 
         for split in ["valid"]:

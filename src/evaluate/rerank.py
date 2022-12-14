@@ -259,7 +259,11 @@ def get_rerank(m, prefix, output_mapping, forward, filter=True):
             if exists(filename):
                 num_exist_file += 1
                 with open(filename, "r") as f:
-                    prob = float(f.read().strip())
+                    try:
+                        prob = float(f.read().strip())
+                    except ValueError:
+                        prob = -1e8
+
                     probs.append(prob)
                     if prob > best_prob:
                         best_tgt = tgt

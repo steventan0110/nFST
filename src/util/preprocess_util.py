@@ -118,11 +118,11 @@ class Vocab:
 
 class Utils:
     @staticmethod
-    def load_mapping(fname):
+    def load_mapping(fname, delimitator="\t"):
         to_return = bidict()
         with open(fname, mode="r") as fh:
             for l in fh:
-                p = l[:-1].split("\t")
+                p = l[:-1].split(delimitator)
                 code = p[0]
                 idx = int(p[1])
                 if idx == 0:

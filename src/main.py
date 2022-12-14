@@ -2,11 +2,14 @@ import hydra
 from typing import Dict
 import logging
 from omegaconf import DictConfig, OmegaConf
-from src.preprocess.snips import PreprocessSnips
+
 from src.preprocess.tr import PreprocessTR
 from src.util.preprocess_util import dotdict
+
 from src.trainer.tr_trainer import Trainer
+
 from src.decode.tr_serialize import SerializeTR
+
 from src.decode.decoder import Decoder
 from src.evaluate.rerank import Rerank
 
@@ -25,7 +28,8 @@ def main(config: DictConfig):
     logger.info(OmegaConf.to_yaml(config, resolve=True))
     dict_cfg = OmegaConf.to_container(config, resolve=True)
     args = add_dot_operation(dict_cfg)
-
+    # print(args)
+    # Trainer(args)
     if args.do_preprocess:
         PreprocessTR(args)
     if args.do_train:

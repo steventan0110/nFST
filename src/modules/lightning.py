@@ -97,8 +97,31 @@ class JointProb(pl.LightningModule):
             args.hid_dim,
             args.pad,
         )
-
-        if args.p_type == "transformer":
+        if args.p_type == "beta":
+            logger.info("Compute Beta prob for proposal")
+            self.num_proposal_dist = FSAGRUScorer(
+                args.hid_dim,
+                args.vocab_size,
+                bos=args.bos,
+                eos=args.eos,
+                pad=args.pad,
+                insert_penalty=args.insert_penalty,
+                insert_threshold=args.insert_threshold,
+                length_threshold=args.length_threshold,
+                length_penalty=args.length_penalty,
+                max_length=args.max_length,
+                embeddings=proposal_embedding,
+                tied_embeddings=args.tied_proposal_embeddings,
+                use_beta=True,  # change into parameters for computing Tree-LSTM later
+            )
+            self.proposal_modules = torch.nn.ModuleList(
+                [
+                    self.num_proposal_dist,
+                ]
+            )
+            # self.num_sampler = TransformerSampler(self.num_proposal_dist)
+            self.num_sampler = Sampler(self.num_proposal_dist)
+        elif args.p_type == "transformer":
             logger.info("Using transformer for proposal")
             self.io_queries = QueryPiGivenXAndYTransformer(
                 args.hid_dim,
@@ -176,7 +199,9 @@ class JointProb(pl.LightningModule):
         # print(param_sum(self.num_sampler.model))
         # print(param_sum(self.proposal_modules))
         if args.use_pretrain_proposal:
-            num_proposal_dist, proposal_modules = self.load_proposal(args)
+            num_proposal_dist, io_queries, proposal_modules = self.load_proposal(args)
+            self.io_queries = io_queries
+            self.num_proposal_dist = num_proposal_dist
             self.num_sampler = Sampler(num_proposal_dist)
             self.proposal_modules = proposal_modules
             # print("after loading ckpt")
@@ -218,18 +243,28 @@ class JointProb(pl.LightningModule):
         # self.set_plang()
 
     def load_proposal(self, args):
-        hard_code_path = "/export/c06/wtan12/nfst/tr-filter-sub-20000/outputs/model/ur/hid-256/layers-2/tilde-p-hid-256/tilde-p-layers-2/drop-0.3/clip-5.0/bsz-32/max-seq-len-300/length-threshold-290/estimator-iwae/proposal-ps/tilde-p-type-LSTM/k-16/tune-q-True/learning-rate-0.001/tied-mark-embeddings-False/label-smoothing-0.1/two-level-marks-False/tilde-p-choice-wfst-nfst-composition-dummy/lightning_logs/version_1/checkpoints/lstm.ckpt"
+        hard_code_path = "/scratch4/jeisner1/nfst/tr-filter-sub-20000/outputs/model/ur/p-type-transformer/tilde-p-type-LSTM/lr-1e-05/tilde-p-lr-0.001/hid-512/layers-6/tilde-p-hid-256/tilde-p-layers-2/drop-0.3/clip-5.0/bsz-8/max-seq-len-300/length-threshold-290/estimator-iwae/proposal-ps/nheads-8/k-64/tune-q-True/tied-mark-embeddings-False/label-smoothing-0.1/two-level-marks-False/tilde-p-choice-wfst-nfst-composition-dummy/lightning_logs/version_0/checkpoints/wfst-nfst-composition-dummy-iwae-epoch=10-val_loss=21.65.ckpt"
         from copy import deepcopy
 
         new_args = deepcopy(args)
         new_args["tilde_p_num_layers"] = 2
         new_args["tilde_p_type"] = "LSTM"
         new_args["use_pretrain_proposal"] = False
+        # hard code to make the scorer consistent with prev checkpoitn
+        new_args["tilde_p_hid_dim"] = 256
 
         pretrain_model = JointProb.load_from_checkpoint(
             hard_code_path, "cpu", args=new_args
         )
-        return (pretrain_model.num_proposal_dist, pretrain_model.proposal_modules)
+        # print(pretrain_model.num_proposal_dist)
+        # print(pretrain_model.io_queries)
+        # print(pretrain_model.proposal_modules)
+        # raise RuntimeError
+        return (
+            pretrain_model.num_proposal_dist,
+            pretrain_model.io_queries,
+            pretrain_model.proposal_modules,
+        )
 
     def set_plang(self):
         if (
@@ -330,7 +365,6 @@ class JointProb(pl.LightningModule):
             .reshape(ps.shape[0] * self.proposal_tuning_k, -1)
         )
         ps_expanded_mask: torch.Tensor = self.get_mask(ps_expanded)
-
         log_q_num, num_samples = self.num_sampler.sample(
             batch_size=batch_size * self.proposal_tuning_k,
             query_args={
@@ -468,7 +502,6 @@ class JointProb(pl.LightningModule):
             else:
                 raise NotImplementedError
         elif self.tune_p:
-            self.tilde_p.parameters()
             return self.train_p(first_six)
         elif self.tune_q:
             return self.train_q(batch, first_six)
@@ -545,59 +578,61 @@ class JointProb(pl.LightningModule):
             self.proposal_modules.parameters(),
             lr=self.learning_rate if self.tune_q else 0.0,
         )
-        if self.tilde_p_type != "transformer":
-            logger.info("Use ReduceLR scheduler for scorer")
-            # using lstm
-            model_optim_config = {
-                "optimizer": model_optimizer,
-                "scheduler": ReduceLROnPlateau(
-                    model_optimizer, mode="min", verbose=True
-                ),
-                "monitor": "val_loss",
-            }
-        else:
-            logger.info("Use warmup scheduler for scorer")
-            model_optim_config = {
-                "optimizer": model_optimizer,
-                "lr_scheduler": {
-                    "scheduler": get_polynomial_decay_schedule_with_warmup(
-                        model_optimizer,
-                        num_warmup_steps=self.warmup_steps,
-                        num_training_steps=40000,
-                        lr_end=1e-6,
+        if self.tune_p:
+            if self.tilde_p_type != "transformer":
+                logger.info("Use ReduceLR scheduler for scorer")
+                # using lstm
+                model_optim_config = {
+                    "optimizer": model_optimizer,
+                    "scheduler": ReduceLROnPlateau(
+                        model_optimizer, mode="min", verbose=True
                     ),
-                    "interval": "step",
-                    "frequency": 1,
                     "monitor": "val_loss",
-                },
-            }
-        if self.p_type != "transformer":
-            logger.info("Use ReduceLR scheduler for proposal")
-            proposal_optim_config = {
-                "optimizer": proposal_optimizer,
-                "scheduler": ReduceLROnPlateau(
-                    proposal_optimizer,
-                    mode="min",
-                    verbose=True,
-                ),
-                "monitor": "val_q_num_loss",
-            }
-        else:
-            logger.info("Use warmup scheduler for proposal")
-            proposal_optim_config = {
-                "optimizer": proposal_optimizer,
-                "lr_scheduler": {
-                    "scheduler": get_polynomial_decay_schedule_with_warmup(
+                }
+            else:
+                logger.info("Use warmup scheduler for scorer")
+                model_optim_config = {
+                    "optimizer": model_optimizer,
+                    "lr_scheduler": {
+                        "scheduler": get_polynomial_decay_schedule_with_warmup(
+                            model_optimizer,
+                            num_warmup_steps=self.warmup_steps,
+                            num_training_steps=40000,
+                            lr_end=1e-6,
+                        ),
+                        "interval": "step",
+                        "frequency": 1,
+                        "monitor": "val_loss",
+                    },
+                }
+        if self.tune_q:
+            if self.p_type != "transformer":
+                logger.info("Use ReduceLR scheduler for proposal")
+                proposal_optim_config = {
+                    "optimizer": proposal_optimizer,
+                    "scheduler": ReduceLROnPlateau(
                         proposal_optimizer,
-                        num_warmup_steps=self.warmup_steps,
-                        num_training_steps=40000,
-                        lr_end=1e-6,
+                        mode="min",
+                        verbose=True,
                     ),
-                    "interval": "step",
-                    "frequency": 1,
                     "monitor": "val_q_num_loss",
-                },
-            }
+                }
+            else:
+                logger.info("Use warmup scheduler for proposal")
+                proposal_optim_config = {
+                    "optimizer": proposal_optimizer,
+                    "lr_scheduler": {
+                        "scheduler": get_polynomial_decay_schedule_with_warmup(
+                            proposal_optimizer,
+                            num_warmup_steps=self.warmup_steps,
+                            num_training_steps=40000,
+                            lr_end=1e-6,
+                        ),
+                        "interval": "step",
+                        "frequency": 1,
+                        "monitor": "val_q_num_loss",
+                    },
+                }
         # return proposal_optim_config
 
         if self.tune_p and self.tune_q:

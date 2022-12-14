@@ -111,8 +111,10 @@ class T9FSADataModule(LightningDataModule):
                 current_fst_split = []
                 file_path = f"{self.prefix}/{dataset_split}"
                 # with open(f'{file_path}.en') as g_fh, open(f'{file_path}.cipher') as p_fh:
-                with open(f"{file_path}.snips.in") as g_fh, open(
-                    f"{file_path}.snips.out"
+                if self.lang == "qa":
+                    self.lang = "tydiqa"
+                with open(f"{file_path}.{self.lang}.in") as g_fh, open(
+                    f"{file_path}.{self.lang}.out"
                 ) as p_fh:
                     for l_idx, (g_l, p_l) in enumerate(
                         tqdm.tqdm(islice(zip(g_fh, p_fh), limit))

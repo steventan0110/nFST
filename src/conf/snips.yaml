@@ -2,7 +2,7 @@
 defaults:
   - _self_
   - preprocess: standard
-  - train: t_4_4_r_snips.yaml
+  - train: r_t_6_8_snips.yaml
 
 limit: 10000000
 task: "snips"
@@ -18,7 +18,7 @@ latent: ???
 after: ???
 vocab: ${output_dir}/${task}/${task}.vocab
 serialize_prefix: ${output_dir}/${task}/outputs/fst/agnostic-${.agnostic}/latent-${.latent}/after-${.after}/${preprocess.preprocess_config}
-prefix: /export/b02/wtan/dataset/snips/agnostic-${.agnostic}/latent-${.latent}/after-${.after}
+prefix: /scratch4/jeisner1/nfst/dataset/snips/agnostic-${.agnostic}/latent-${.latent}/after-${.after}
 training_outputs: ${output_dir}/${task}/outputs/model/agnostic-${.agnostic}/latent-${.latent}/after-${.after}/${train.train_config}
 serialize_fst_path: ${output_dir}/${task}/outputs/fairseq/agnostic-${.agnostic}/latent-${.latent}/after-${.after}
 decode_prefix: ${output_dir}/${task}/outputs/decode/agnostic-${.agnostic}/latent-${.latent}/after-${.after}/${train.train_config}

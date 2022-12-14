@@ -75,7 +75,7 @@ class PreprocessTR(Preprocess):
             self.serialize_under_mpp(buckets, mpp)
 
     def serialize_under_mpp(self, buckets, mpp):
-        for dataset_split in ("train", "dev", "test"):
+        for dataset_split in ("dev", "train", "test"):
             if self.task.startswith("tr-filter"):
                 file_path = f"{self.prefix}/{dataset_split}/{self.language}_{dataset_split}_filter_10_{self.sub_size}.tsv"
             else:

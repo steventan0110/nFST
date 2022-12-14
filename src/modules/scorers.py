@@ -343,11 +343,12 @@ class LeftToRightScorer(PaddedScorer):
         left_inp,
         metadata: Dict[AnyStr, Any],
         locally_normalize: bool = False,
+        beta=None,
     ):
         assert metadata["length"] > 0
         assert "not_cleared" not in metadata
         next_h, scores, updated_metadata = self.actual_left_to_right_score(
-            left_h, left_inp, metadata
+            left_h, left_inp, metadata, beta
         )
 
         updated_metadata["length"] = metadata["length"] + 1
@@ -374,6 +375,7 @@ class LeftToRightScorer(PaddedScorer):
         left_h: torch.Tensor,
         left_inp: torch.Tensor,
         metadata: Dict[AnyStr, Any],
+        beta=None,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor, Dict[AnyStr, Any]]:
         pass
@@ -538,6 +540,17 @@ class GRUScorer(LeftToRightScorer):
         )
         self.unit = GRUCell(hid_dim, hid_dim)
         self.drop = Dropout(dropout)
+        self.beta_scorer = torch.nn.Sequential(
+            torch.nn.Linear(
+                hid_dim,
+                hid_dim,
+            ),
+            torch.nn.GELU(),
+            torch.nn.Linear(
+                hid_dim,
+                self.vocab_size,
+            ),
+        )
         if tied_embeddings:
             self.scorer = torch.nn.Sequential(
                 torch.nn.Linear(
@@ -561,15 +574,31 @@ class GRUScorer(LeftToRightScorer):
             )
         return
 
-    def actual_left_to_right_score(self, left_h, left_inp, metadata, **kwargs):
+    def actual_left_to_right_score(self, left_h, left_inp, metadata, beta, **kwargs):
         looked_up = self.drop(self.embeddings(left_inp))
         rnn_updated = self.drop(self.unit(looked_up, left_h))
-        rnn_updated_again = self.attune(rnn_updated, **kwargs)
-        return (
-            rnn_updated,
-            self.scorer(torch.cat([rnn_updated, rnn_updated_again], dim=1)),
-            metadata,
-        )
+
+        if beta is not None:
+            # bz x vocab_size (emission size)
+            prefix_score = self.beta_scorer(rnn_updated)
+            current_state = metadata["state"]  # bz
+            # bz x vocab_size
+            transition = self.transition_k[
+                torch.arange(current_state.shape[0], device=current_state.device),
+                current_state,
+            ]
+            beta_logits = torch.gather(beta, 1, transition)
+            # TODO: drastically different scale?
+            final_score = beta_logits + prefix_score
+            return (rnn_updated, final_score, metadata)
+        else:
+            # use raw x,y encoding to update the hidden state
+            rnn_updated_again = self.attune(rnn_updated, **kwargs)
+            return (
+                rnn_updated,
+                self.scorer(torch.cat([rnn_updated, rnn_updated_again], dim=1)),
+                metadata,
+            )
 
 
 class FSAGRUScorer(GRUScorer):
@@ -598,7 +627,9 @@ class FSAGRUScorer(GRUScorer):
         )
         return h0, x0, metadata
 
-    def actual_left_to_right_score(self, left_h, left_inp, metadata, **kwargs):
+    def actual_left_to_right_score(
+        self, left_h, left_inp, metadata, beta=None, **kwargs
+    ):
         next_output = torch.empty_like(left_inp)
         next_output.fill_(self.__pad__)
         next_output.masked_scatter(metadata["next_is_output"], left_inp)
@@ -613,6 +644,7 @@ class FSAGRUScorer(GRUScorer):
             left_h,
             left_inp,
             metadata,
+            beta,
             update_output=next_output,
             update_input=next_input,
         )
@@ -656,6 +688,191 @@ class FSAGRUScorer(GRUScorer):
         return transitions[
             torch.arange(prev_states.shape[0], device=prev_states.device), updated
         ]
+
+    def compute_beta_per_sample(self, transition):
+        # TODO: parallelize the computation to make it faster
+        n_states = transition.shape[0]
+        parents = [[] for _ in range(n_states)]
+        message = [[] for _ in range(n_states)]
+        edge_list = [[] for _ in range(n_states)]
+        # store beta score for each state
+        beta = torch.zeros(n_states).to(self.W.device)
+        # store embedding of each state
+        beta_hat = torch.zeros(n_states, self.hid_dim).to(self.W.device)
+
+        # construct parent nodes and child nodes for each state
+        prev_states = []
+        for i in range(n_states):
+            for j in range(transition.shape[1]):
+                to_state = transition[i, j].item()
+                # omit self recursion for padding
+                # if to_state == i and to_state != 0:
+                #     print(f"recursive state {i} with arc f{Vocab.r_lookup(j)}")
+                if to_state != 0 and to_state != i:
+                    # state i can transition to state j
+                    parents[i].append(to_state)
+                    edge_list[to_state].append((i, j))
+            if len(parents[i]) == 0:
+                prev_states.append(i)
+
+        # there should be only one start state, that is the end state
+        assert len(prev_states) == 1
+        beta[prev_states[0]] = 1  # init beta=1 for the end state
+
+        # itr = 0
+        while prev_states:
+            # itr += 1
+            new_states = []
+            for top_node in prev_states:
+                for (child, mark) in edge_list[top_node]:
+                    # take out beta and beta hat of next state (parent)
+                    parent_beta = beta[top_node]
+                    parent_beta_hat = beta_hat[top_node]
+                    # compute message passed
+                    mark_emb = self.embeddings(torch.tensor(mark).to(self.Wx.device))
+                    beta_hat_tran = self.beta_activation(
+                        self.Wx @ mark_emb + self.Wh @ parent_beta_hat + self.beta_bias
+                    )
+                    beta_tran = (
+                        torch.exp(self.W @ beta_hat_tran) * parent_beta
+                    ).squeeze()
+                    # store incoming messages
+                    message[child].append((top_node, beta_tran, beta_hat_tran))
+                    if len(message[child]) == len(parents[child]):
+                        # message aggregation
+                        for (_, sender_tran, _) in message[child]:
+                            beta[child] += sender_tran
+                        for (sender, sender_tran, sender_hat_tran) in message[child]:
+                            tran_prob = sender_tran / beta[child]
+                            beta_hat[child] += tran_prob * sender_hat_tran
+                        new_states.append(child)
+            prev_states = new_states
+        # beta[0] = -1e9  # always disable the first state
+        return beta
+
+    def compute_beta_parallel(self):
+        """compute beta prob using matrix parallelization"""
+        bzk, n_states, vocab_size = self.transition_k.shape
+        bz = bzk // self.k
+        # track number of parents for each state
+        parents = self.transition_k.new_full((bz, n_states), 0)
+        visited = self.transition_k.new_full((bz, n_states), False).bool()
+        # track the transition arc
+        edges = self.transition_k.new_full((bz, n_states, n_states), 0).int()
+
+        # TODO: parallelize the graph construction
+        for b in range(bz):
+            transition = self.transition_k[b * self.k]
+            # build graph for current transition
+            for i in range(n_states):
+                for j in range(transition.shape[1]):
+                    to_state = transition[i, j].item()
+                    # omit self recursion for padding
+                    # if to_state == i and to_state != 0:
+                    #     print(f"recursive state {i} with arc f{Vocab.r_lookup(j)}")
+                    if to_state != 0 and to_state != i:
+                        # state i can transition to state j
+                        parents[b][i] += 1
+                        edges[b][to_state][i] = j
+        # print(parents)
+        # store beta score for each state
+        beta = torch.zeros(bz, n_states).to(self.W.device)
+        # store embedding of each state
+        beta_hat = torch.zeros(bz, n_states, self.hid_dim).to(self.W.device)
+        # track beta(parent->current)
+        parent_msg = torch.zeros(bz, n_states, n_states).to(self.W.device)
+        # track beta_hat(parent->current)
+        parent_msg_emb = torch.zeros(bz, n_states, n_states, self.hid_dim).to(
+            self.W.device
+        )
+
+        # Repeat until all sample finished:
+        init = True
+        # bz x #state x #state x hid (word emb dim)
+        arc_emb = self.embeddings(edges)
+        while True:
+            # step 0: comptute current outgoing state (with 0 parents needs to be seen)
+            no_parent = parents == 0
+            cur_states = torch.logical_and(~visited, no_parent)  # bz x #states
+            if torch.all(~cur_states):
+                # no more outgoing states, break from the update
+                break
+            # step 1: aggregate info to compute beta and beta_hat, if at start, init it
+
+            if init:
+                # no need to init beta hat as they are fine starting 0s
+                beta[cur_states] = 1
+                init = False
+            else:
+                # compute transition prob q
+                # compute beta and beta hat
+                reverse_parent_msg = parent_msg.transpose(1, 2)
+                beta[cur_states] = torch.sum(reverse_parent_msg[cur_states], dim=-1)
+                reverse_parent_msg_emb = parent_msg_emb.transpose(1, 2)
+                # bz x S x S x 1
+                q = (
+                    reverse_parent_msg[cur_states] / beta[cur_states].unsqueeze(-1)
+                ).unsqueeze(-1)
+                # sum(N x S x H * N x S x 1) -> N x H
+                beta_hat[cur_states] = torch.sum(
+                    reverse_parent_msg_emb[cur_states] * q, dim=1
+                )
+
+            # step 2: compute msg to their outgoing children
+            # bz x #state x 1 x hid
+            beta_hat_h = torch.einsum("abcd,ed->abce", beta_hat.unsqueeze(2), self.Wh)
+            # bz x #states x #state x hid
+            beta_hat_x = torch.einsum("abcd,ed->abce", arc_emb, self.Wx)
+            # bz x #states x #state x hid
+            beta_msg = self.beta_activation(beta_hat_h + beta_hat_x + self.beta_bias)
+            msg_passing_mask = edges[cur_states] != 0
+            # print(msg_passing_mask.shape)
+            # TODO: currently require the intermediate tmp to pass the value
+            # There should be more efficient approach to update the matrices
+            tmp = torch.zeros(beta_msg[cur_states].shape).to(self.W.device)
+            tmp[msg_passing_mask] = beta_msg[cur_states][msg_passing_mask]
+            parent_msg_emb[cur_states] = tmp
+
+            # bz x #state x #state x 1
+            compatibility = torch.einsum("abcd,ed->abce", beta_msg, self.W).squeeze(-1)
+            compatibility = torch.exp(compatibility)
+            # make beta (bz x S x 1) to perform elementwise multiplication
+            beta_transition = compatibility * beta.unsqueeze(-1)
+            tran_tmp = torch.zeros(beta_transition[cur_states].shape).to(self.W.device)
+            tran_tmp[msg_passing_mask] = beta_transition[cur_states][msg_passing_mask]
+            parent_msg[cur_states] = tran_tmp
+
+            # update visited and parent for next iteration
+            visited[cur_states] = True
+            parent_update_matrix = edges.new_full(edges.shape, 0).float()
+            parent_update_tmp = torch.zeros(edges[cur_states].shape).to(self.W.device)
+            parent_update_tmp[msg_passing_mask] = 1
+            parent_update_matrix[cur_states] = parent_update_tmp
+            num_visits = torch.sum(parent_update_matrix, dim=1)
+            parents = parents - num_visits
+
+        return beta.repeat_interleave(self.k, dim=0), parent_msg.repeat_interleave(
+            self.k, dim=0
+        )
+
+    def compute_beta(self):
+        beta, beta_hat = self.compute_beta_parallel()
+        # """compute beta using backward algorithm along with Tree-LSTM to encode the weight"""
+        # bz = self.transition_k.shape[0] // self.k
+        # beta_all = self.transition_k.new_full((bz, self.transition_k.shape[1]), 0)
+
+        # # print(f"batch size: {bz} and k: {self.k}")
+        # for i in range(bz):
+        #     transition = self.transition_k[i * self.k].int()
+        #     beta = self.compute_beta_per_sample(transition)
+        #     beta_all[i] = beta
+        #     # emission = self.emission_k[i]
+        #     # for j in range(emission.shape[0]):
+        #     #     if emission[j, :].sum() == 1 and emission[j, self.__pad__] == 1:
+        #     #         print("end state:", j)
+        # print("beta computed for one batch")
+        # beta_all = beta_all.repeat_interleave(self.k, dim=0)
+        return beta
 
     def set_masks(self, emission: torch.Tensor, transition: torch.Tensor):
         assert len(emission.shape) == 3
@@ -718,6 +935,7 @@ class FSAGRUScorer(GRUScorer):
         query=None,
         embeddings=None,
         tied_embeddings: bool = False,
+        use_beta: bool = False,
     ):
         super(FSAGRUScorer, self).__init__(
             hid_dim=hid_dim,
@@ -732,6 +950,26 @@ class FSAGRUScorer(GRUScorer):
             embeddings=embeddings,
             tied_embeddings=tied_embeddings,
         )
+
+        self.use_beta = use_beta
+        if self.use_beta:
+            # init parameters for beta
+            # State transition matrix for beta'(S')
+            self.Wh = torch.nn.Parameter(torch.randn(hid_dim, hid_dim))
+            torch.nn.init.xavier_uniform(self.Wh)
+            self.Wh.requires_grad = True
+            # Input embedding transformation matrix
+            self.Wx = torch.nn.Parameter(torch.randn(hid_dim, hid_dim))
+            torch.nn.init.xavier_uniform(self.Wx)
+            self.Wx.requires_grad = True
+            # compatibility function for computing beta(S->S')
+            self.W = torch.nn.Parameter(torch.randn(1, hid_dim))
+            torch.nn.init.xavier_uniform(self.W)
+            self.W.requires_grad = True
+            self.beta_activation = torch.nn.Tanh()
+            # self.h0 = torch.zeros((1, hid_dim))
+            self.beta_bias = torch.nn.Parameter(torch.zeros(hid_dim))
+            self.beta_bias.requires_grad = True
 
         input_mark = Vocab.lookup("input-mark")
         output_mark = Vocab.lookup("output-mark")
@@ -817,7 +1055,9 @@ class FSAGRUScorer(GRUScorer):
 
 
 class FSAMaskScorer(FSAGRUScorer):
-    def actual_left_to_right_score(self, left_h, left_inp, metadata, **kwargs):
+    def actual_left_to_right_score(
+        self, left_h, left_inp, metadata, beta=None, **kwargs
+    ):
         next_output = torch.empty_like(left_inp)
         next_output.fill_(self.__pad__)
         next_output.masked_scatter(metadata["next_is_output"], left_inp)
@@ -1176,7 +1416,11 @@ class StaticRNNScorer(CompositeScorer):
         return self.locally_normalized
 
     def actual_left_to_right_score(
-        self, left_h: torch.Tensor, left_inp: torch.Tensor, metadata: Dict[AnyStr, Any]
+        self,
+        left_h: torch.Tensor,
+        left_inp: torch.Tensor,
+        metadata: Dict[AnyStr, Any],
+        beta=None,
     ) -> Tuple[torch.Tensor, torch.Tensor, Dict[AnyStr, Any]]:
         """
 

@@ -16,9 +16,13 @@ class GPT2Wrapper(nn.Module):
         self.max_length = args.max_length
         self.num_layers = args.tilde_p_num_layers
         self.num_heads = args.num_heads
+        if args.tilde_p_num_layers == 1:
+            self.num_heads = 128  # large ensemble
+        else:
+            self.num_heads = args.num_heads
         self.config = GPT2Config(
             args.vocab_size,
-            n_head=args.num_heads,
+            n_head=self.num_heads,
             n_layer=args.tilde_p_num_layers,
             bos_token_id=self.bos,
             eos_token_id=self.eos,

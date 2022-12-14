@@ -2,8 +2,7 @@
 defaults:
   - _self_
   - preprocess: standard
-  - train: lstm
-
+  - train: t_6_8_t_6_8
 
 limit: 1000000
 task: "tr-filter-20000"
@@ -19,7 +18,7 @@ sub_size: 20000
 machine_type: base
 vocab: ${output_dir}/${task}/${task}.vocab
 serialize_prefix: ${output_dir}/${task}/outputs/fst/${language}/${preprocess.preprocess_config}
-prefix: /export/b02/wtan/dataset/tr
+prefix: /scratch4/jeisner1/nfst/dataset/tr
 training_outputs: ${output_dir}/${task}/outputs/model/${language}/${train.train_config}
 serialize_fst_path: ${output_dir}/${task}/outputs/fairseq/${language}
 decode_prefix: ${output_dir}/${task}/outputs/decode/${language}/${train.train_config}
